@@ -1,0 +1,112 @@
+##从1000G中计算ld，再保留db中的所有snp，然后得到了用与计算TWAS的covariance
+    #从1000G中计算ld
+#!/bin/bash
+for chr in {1..22}; do
+qsub -N "pseudobulk_ALL_chr${chr}" \
+-l nodes=tc6000:ppn=1 \
+-l walltime=240:00:00 \
+-o "/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_5/1000G_chr${chr}.o" \
+-e "/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_5/1000G_chr${chr}.e" \
+<< END
+#!/bin/bash
+BCF_PLUGIN="/public/home/liuxy/bcftools-1.18/plugins"
+BCF_TOOL="/public/home/liuxy/bcftools-1.18/bcftools"
+SAMPLE_LIST="/node1/liuxy/index/1000G/EUR_samples.txt"
+INPUT="/node1/liuxy/index/1000G_2/ALL.chr${chr}.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz"
+OUTPUT="/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_5/chr${chr}.txt.gz"
+
+\$BCF_TOOL view -S \$SAMPLE_LIST --force-samples  -Ou -Ou "\$INPUT"| \\
+\$BCF_TOOL query -f '%CHROM\t%POS\t%REF\t%ALT\t%EUR_AF[\t%GT]\n' | \\
+
+awk '
+{
+    chr = \$1
+    pos = \$2
+    ref = \$3
+    alt = \$4
+    id = chr "_" pos "_" ref "_" alt
+
+    printf "%s\\t%s\\t%s\\t%s\\t%s\\t%s", chr, id, pos, ref, alt, \$5
+
+    for (i=6; i<=NF; i++) {
+        gt = \$i
+        if (gt == "." || gt == "./." || gt == ".|.") {
+            printf "\\tNA"
+        } else {
+            split(gt, a, /\\||\\//)
+            dos = (a[1] != "0") + (a[2] != "0")
+            printf "\\t%d", dos
+        }
+    }
+    printf "\\n"
+}
+' | gzip > "\$OUTPUT"
+END
+
+echo "Submitted chromosome ${chr}"
+done
+
+
+##用本研究中的snp的ref alt校正ld的方向
+#!/bin/bash
+for chr in {1..22}; do
+qsub -N "final_fix_$chr" \
+-l nodes=tc6000:ppn=1 \
+-o "/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_6/fix_$chr.o" \
+-e "/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_6/fix_$chr.e" \
+<< END
+#!/bin/bash
+CHR="$chr"
+DB_FILE="/node1/liuxy/MediCell/pbmc/predictdb/usefile/split_chr/snp_annot/snp_annot.chr\${CHR}.txt"
+INPUT="/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_5/chr\${CHR}.txt.gz"
+OUTPUT="/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_6/chr\${CHR}.txt.gz"
+
+zcat \$INPUT | awk '
+BEGIN {
+    FS="\t";
+    OFS="\t";
+}
+
+NR == FNR {
+    if(NR==1) next;
+    chrom=\$1;
+    pos=\$2;
+    ref=\$4;
+    alt=\$5;
+    key=chrom "," pos "," ref;
+    alts[key] = alts[key] " " alt;
+    next;
+}
+
+{
+    chrom = \$1;
+    pos = \$3;
+    ref = \$4;
+    key=chrom "," pos "," ref;
+
+    if(!(key in alts)) next;
+
+    split(\$5, a, ",");
+    split(\$6, f, ",");
+    split(alts[key], targets, " ");
+
+    for (i in targets) {
+        target = targets[i];
+        if(target == "") continue;
+        for (j=1; j<=length(a); j++) {
+            if(a[j] == target) {
+                id = chrom "_" pos "_" ref "_" target;
+                \$2 = id;
+                \$5 = target;
+                \$6 = f[j];
+                print \$0;
+                break;
+            }
+        }
+    }
+}
+' \$DB_FILE <(zcat \$INPUT) | gzip > \$OUTPUT
+echo "DONE"
+END
+echo "Submitted chr $chr"
+done
