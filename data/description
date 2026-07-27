@@ -1,1 +1,22 @@
+###db
 
+##pbmc
+/MediCell/data/db/pbmc
+##glom
+/MediCell/data/db/glom
+##tub
+/MediCell/data/db/glom
+
+###cov
+##pbmc
+/MediCell/data/cov/pbmc
+##glom
+/MediCell/data/cov/glom
+##tub
+/MediCell/data/cov/glom
+
+###GWAS summary
+##for pbmc
+/MediCell/data/GWAS/pbmc/
+##for kidney
+/MediCell/data/GWAS/kidney/
