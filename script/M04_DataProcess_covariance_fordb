@@ -1,19 +1,16 @@
-#-----------------1. RNA-seq preprocessing (ENIGMA)--------------------------------
-#-----------------1.1 重新进行过滤与INT转换---------------------------------
-##保留至少在20%的样本中TPM > 0.1的基因####
-## Filtering cell type-specific gene expression matrix 
-## retain gene that TPM > 0.1 and express in > 20% (from GTEx)
-load("/node1/liuxy/chplot/combind_plasma_B/enigma/output/count/enigma.cse.trace_norm_alpha_0.1.RData")
-#enigma.cse.test 是一个 genes × samples × cell_types 的三维数组
-# dimnames: [genes, samples, cell_types]
+### QC after ENGMA for calculate PEER factor
+## R = 3.6.3
+library(stringr)
+library(parallel)
+library(peer)
+library(dplyr)
 
+load("/node1/liuxy/chplot/combind_plasma_B/enigma/output/count/enigma.cse.trace_norm_alpha_0.1.RData")
 cell_types <- dimnames(enigma.cse.test)[[3]]
 filtered_genes <- list()
 for (cell_type in cell_types) {
   expr_matrix <- enigma.cse.test[, , cell_type]
-  #每个基因在多少样本中表达 > 0.1
   n_samples_above_threshold <- rowSums(expr_matrix > 0.1)
-  #至少需要的样本数 (1%),并且至少要有5个样本表达
   min_samples_1 <- ceiling(0.01 * ncol(expr_matrix))
   min_samples <- max(min_samples_1, 5)
   keep_genes <- n_samples_above_threshold >= min_samples
@@ -29,35 +26,25 @@ for (cell_type in cell_types) {
 sapply(filtered_genes, length)
 which(filtered_genes[['NK']]=='ENSG00000138378') 
 
-##在enigma.cse.test中保留过滤后的基因
 filtered_matrices <- list()
 cell_types <- dimnames(enigma.cse.test)[[3]]
 
 for (cell_type in cell_types) {
-  # 获取当前细胞类型的所有基因
   all_genes <- dimnames(enigma.cse.test)[[1]]
-  # 获取当前细胞类型需要保留的基因
   keep_genes <- filtered_genes[[cell_type]]
   keep_indices <- which(all_genes %in% keep_genes)
   filtered_mat <- enigma.cse.test[keep_indices, , cell_type]
   filtered_matrices[[cell_type]] <- filtered_mat
 }
 
-str(filtered_matrices)
-
-##将过滤后的基因表达矩阵进行INT矩阵，并输出为predictDB和s-predixcan需要的格式
 cell_types <- names(filtered_matrices)
-
 for (ctname in cell_types) {
   ct_matrix <- filtered_matrices[[ctname]]
-  # 转换为数据框并转置（样本 × 基因）
   tmp <- as.data.frame(t(ct_matrix))
-  # INT 转换
   tmp.INT <- matrix(0, nrow(tmp), ncol(tmp))
   for (i in 1:ncol(tmp)) {
     tmp.INT[, i] <- qqnorm(tmp[, i], plot.it = FALSE)$x
   }
-  
   rownames(tmp.INT) <- rownames(tmp)
   colnames(tmp.INT) <- colnames(tmp)
   tmp.INT <- as.data.frame(tmp.INT)
@@ -77,171 +64,12 @@ for (ctname in cell_types) {
   )
 }
 
-#glom
-load("/node1/liuxy/chplot/kidney_new/output/glom/count/enigma.cse.trace_alpha_0.1.RData")
-#enigma.cse.test 是一个 genes × samples × cell_types 的三维数组
-# dimnames: [genes, samples, cell_types]
-
-cell_types <- dimnames(enigma.cse.test)[[3]]
-filtered_genes <- list()
-for (cell_type in cell_types) {
-  expr_matrix <- enigma.cse.test[, , cell_type]
-  #每个基因在多少样本中表达 > 0.1
-  n_samples_above_threshold <- rowSums(expr_matrix > 0.1)
-  #至少需要的样本数 (1%),并且至少要有5个样本表达
-  min_samples_1 <- ceiling(0.01 * ncol(expr_matrix))
-  min_samples <- max(min_samples_1, 5)
-  keep_genes <- n_samples_above_threshold >= min_samples
-  
-  filtered_genes[[cell_type]] <- rownames(expr_matrix)[keep_genes]
-  message(sprintf("Cell type: %s, Genes kept: %d/%d (%.1f%%)", 
-                  cell_type, 
-                  sum(keep_genes), 
-                  nrow(expr_matrix),
-                  100 * sum(keep_genes)/nrow(expr_matrix)))
-}
-
-sapply(filtered_genes, length)
-which(filtered_genes[['NK']]=='ENSG00000138378') 
-
-##在enigma.cse.test中保留过滤后的基因
-filtered_matrices <- list()
-cell_types <- dimnames(enigma.cse.test)[[3]]
-
-for (cell_type in cell_types) {
-  # 获取当前细胞类型的所有基因
-  all_genes <- dimnames(enigma.cse.test)[[1]]
-  # 获取当前细胞类型需要保留的基因
-  keep_genes <- filtered_genes[[cell_type]]
-  keep_indices <- which(all_genes %in% keep_genes)
-  filtered_mat <- enigma.cse.test[keep_indices, , cell_type]
-  filtered_matrices[[cell_type]] <- filtered_mat
-}
-
-str(filtered_matrices)
-
-##将过滤后的基因表达矩阵进行INT矩阵，并输出为predictDB和s-predixcan需要的格式
-cell_types <- names(filtered_matrices)
-
-for (ctname in cell_types) {
-  ct_matrix <- filtered_matrices[[ctname]]
-  # 转换为数据框并转置（样本 × 基因）
-  tmp <- as.data.frame(t(ct_matrix))
-  # INT 转换
-  tmp.INT <- matrix(0, nrow(tmp), ncol(tmp))
-  for (i in 1:ncol(tmp)) {
-    tmp.INT[, i] <- qqnorm(tmp[, i], plot.it = FALSE)$x
-  }
-  
-  rownames(tmp.INT) <- rownames(tmp)
-  colnames(tmp.INT) <- colnames(tmp)
-  tmp.INT <- as.data.frame(tmp.INT)
-  
-  write.table(
-    tmp.INT,
-    file = paste0("/node1/liuxy/chplot/kidney_new/output/glom/count/tpm0.1sample0.01/", ctname, "_gene_exp.csv"),
-    sep = ",",
-    col.names = TRUE,
-    row.names = FALSE
-  )
-  write.table(
-    tmp.INT,
-    file = paste0("/node1/liuxy/chplot/kidney_new/output/glom/count/tpm0.1sample0.01/", ctname, "_transformed_expression.txt"),
-    sep = "\t",
-    row.names = TRUE
-  )
-}
-
-#tub
-load("/node1/liuxy/chplot/kidney_new/output/tub/count/enigma.cse.trace_alpha_0.1.RData")
-#enigma.cse.test 是一个 genes × samples × cell_types 的三维数组
-# dimnames: [genes, samples, cell_types]
-
-cell_types <- dimnames(enigma.cse.test)[[3]]
-filtered_genes <- list()
-for (cell_type in cell_types) {
-  expr_matrix <- enigma.cse.test[, , cell_type]
-  #每个基因在多少样本中表达 > 0.1
-  n_samples_above_threshold <- rowSums(expr_matrix > 0.1)
-  #至少需要的样本数 (1%),并且至少要有5个样本表达
-  min_samples_1 <- ceiling(0.01 * ncol(expr_matrix))
-  min_samples <- max(min_samples_1, 5)
-  keep_genes <- n_samples_above_threshold >= min_samples
-  
-  filtered_genes[[cell_type]] <- rownames(expr_matrix)[keep_genes]
-  message(sprintf("Cell type: %s, Genes kept: %d/%d (%.1f%%)", 
-                  cell_type, 
-                  sum(keep_genes), 
-                  nrow(expr_matrix),
-                  100 * sum(keep_genes)/nrow(expr_matrix)))
-}
-
-sapply(filtered_genes, length)
-which(filtered_genes[['NK']]=='ENSG00000138378') 
-
-##在enigma.cse.test中保留过滤后的基因
-filtered_matrices <- list()
-cell_types <- dimnames(enigma.cse.test)[[3]]
-
-for (cell_type in cell_types) {
-  # 获取当前细胞类型的所有基因
-  all_genes <- dimnames(enigma.cse.test)[[1]]
-  # 获取当前细胞类型需要保留的基因
-  keep_genes <- filtered_genes[[cell_type]]
-  keep_indices <- which(all_genes %in% keep_genes)
-  filtered_mat <- enigma.cse.test[keep_indices, , cell_type]
-  filtered_matrices[[cell_type]] <- filtered_mat
-}
-
-str(filtered_matrices)
-
-##将过滤后的基因表达矩阵进行INT矩阵，并输出为predictDB和s-predixcan需要的格式
-cell_types <- names(filtered_matrices)
-
-for (ctname in cell_types) {
-  ct_matrix <- filtered_matrices[[ctname]]
-  # 转换为数据框并转置（样本 × 基因）
-  tmp <- as.data.frame(t(ct_matrix))
-  # INT 转换
-  tmp.INT <- matrix(0, nrow(tmp), ncol(tmp))
-  for (i in 1:ncol(tmp)) {
-    tmp.INT[, i] <- qqnorm(tmp[, i], plot.it = FALSE)$x
-  }
-  
-  rownames(tmp.INT) <- rownames(tmp)
-  colnames(tmp.INT) <- colnames(tmp)
-  tmp.INT <- as.data.frame(tmp.INT)
-  
-  write.table(
-    tmp.INT,
-    file = paste0("/node1/liuxy/chplot/kidney_new/output/tub/count/tpm0.1sample0.01/", ctname, "_gene_exp.csv"),
-    sep = ",",
-    col.names = TRUE,
-    row.names = FALSE
-  )
-  write.table(
-    tmp.INT,
-    file = paste0("/node1/liuxy/chplot/kidney_new/output/tub/count/tpm0.1sample0.01/", ctname, "_transformed_expression.txt"),
-    sep = "\t",
-    row.names = TRUE
-  )
-}
-
-#nodes=tc6000
-#source ~/.bashrc
-#conda activate r3.6.3
-library(stringr)
-library(parallel)
-library(peer)
-library(dplyr)
+#calculate PEER factor
 setwd("/node1/liuxy/chplot/combind_plasma_B/enigma/output/peer/")
 covs <- read.table("/node1/liuxy/sc_eQTL_science2022/OneK1K_sex_age_10PCs.txt",header = T) #only need 971 samples
 sample971 <- read.table("/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/pbmc_6_CellType_971samples_pseudobulk_TPM.txt",header = T)
 cbs_frax <- read.table("/node1/zhaoq/scTWAS_PBMC/ENIGMA/new_result_54genes/CIBERSORTx_Job129_Adjusted_pbmc_54genes.txt",header = T)
 cbs_frax <- cbs_frax %>% select(-(last_col(2):last_col()))
-cbs_frax$B_cell_merged <- cbs_frax[["Plasma"]] + cbs_frax[["B"]]
-cbs_frax <- cbs_frax[, !colnames(cbs_frax) %in% c("Plasma", "B")]
-colnames(cbs_frax)[colnames(cbs_frax) == 'B_cell_merged'] <- 'B'
 rownames(cbs_frax) <- cbs_frax$Mixture
 cbs_frax <- cbs_frax[,-1]
 cell_fractions <- cbs_frax[, c("Mono", "NK", "CD8T", "CD4T", "B")]
@@ -249,9 +77,7 @@ cell_fractions_t <- t(cell_fractions)
 rownames(cell_fractions_t) <- c("Mono", "NK", "CD8T", "CD4T", "B")
 
 covs <- covs[,c("id",colnames(sample971[,2:ncol(sample971)]))] 
-dim(covs)  # age sex and 6 genotype princepal components
 rownames(covs) <- covs$id
-##列名为covirates，行名sample
 covs <- as.matrix(t(covs[,-1]))
 covs_colnames <- colnames(covs)
 common_samples <- intersect(colnames(covs), colnames(cell_fractions_t))
@@ -259,7 +85,7 @@ cell_fractions_t_aligned <- cell_fractions_t[, common_samples, drop = FALSE]
 covs_aligned <- covs[, common_samples, drop = FALSE]
 covs_new <- rbind(covs_aligned, cell_fractions_t_aligned)
 
-####for each cell type
+## for each cell type
 celltypes <- c("B","CD4T","CD8T","NK","Mono","DC")
 peer_fctr_clcl <- function(i){
   ctname <- prmtr[i,1]
@@ -295,7 +121,7 @@ peer_fctr_clcl <- function(i){
 }
 
 prmtr <- expand.grid(celltypes) 
-mclapply(seq(nrow(prmtr)), peer_fctr_clcl, mc.cores = 6) #后台提交程序时，服务器申请7个核
+mclapply(seq(nrow(prmtr)), peer_fctr_clcl, mc.cores = 6)
 
 
 ##get covarites files from peer result
@@ -311,7 +137,6 @@ for(expression_file in expression_files){
   peer_res_file <- paste(celltype, "PCs_and_age_gender_peer_res.RData", sep = "_")
   peer_res_file <- paste0("/node1/liuxy/chplot/combind_plasma_B/enigma/output/peer/", peer_res_file)
   load(peer_res_file)
-  #这里需要把矩阵转置一下，列名要设置成样本名
   
   peer_fctr <- t(res$factors)
   colnames(peer_fctr) <- samples_ordr
