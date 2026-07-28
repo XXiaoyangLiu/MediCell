@@ -8,34 +8,27 @@
 myenigma <- create_ENIGMA(bulk = as.matrix(Bulk), ref = as.matrix(profile_pbmc), ref_type = "aggre")
 myenigma@result_cell_proportion <- cbs_frax_for_enigma
 myenigma.bak <- myenigma
-#myenigma <- ENIGMA_trace_norm(myenigma.bak, alpha = 0.1, do_cpm=F, preprocess = "log")
-#save(myenigma, file = paste0('myenigma_alpha_0.1.RData'))
-#enigma.cse.test <- sce2array(myenigma, norm_output = F)
-#save(enigma.cse.test, file = paste0("./count/enigma.cse.trace_alpha_0.1.RData"))
-
+myenigma <- ENIGMA_trace_norm(myenigma.bak, alpha = 0.1, do_cpm=F, preprocess = "log")
+save(myenigma, file = paste0('myenigma_alpha_0.1.RData'))
+enigma.cse.test <- sce2array(myenigma, norm_output = F)
+save(enigma.cse.test, file = paste0("./count/enigma.cse.trace_alpha_0.1.RData"))
 ##After deconvolution from ENIGMA, we recommend retaining exclusively protein coding genes and removing lowly expressed genes to mitigate technical noise.
 
 ### Step 2 Genotype preprocessing
 ## Purpose： Perform quality control and filtering on genotype data (SNP array as example) matched to bulk RNA-seq samples, and compute genotype dosages
-## Script：M03_DataProcess_genotype
 
 ### Step 3 Covariate selection
-## 
-## Script：M04_DataProcess_covariance_fordb.R
-
+## Script：M02_DataProcess_covariance_fordb.R
 
 ### Step 4 TWAS model training
 ## Purpose：Train prediction models to generate input files for S-PrediXcan
-## Script：M04_ModelTraining.R
+## Script：M03_ModelTraining.R
 
 ### Step 5 LD score preparation from matched 1000 Genomes population as covariates for S-PrediXcan
-## Purpose：
-## Script：M07_covariance_for_TWAS
+## Script：M05_DataProcess_covariance_for_TWAS
 
 ### Step 6 spredixcan calculation
-## Purpose：
-## Script：M08_TWAS.sh
+## Script：M06_TWAS.sh
 
 ### Step 7 Downstream statistical analysis
-## Purpose：
-## Script：M09_ResultStatistic.R
+## Script：M07_ResultStatistic.R
