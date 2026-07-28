@@ -1,7 +1,10 @@
-#TWAS filt
+### TWAS summary statistic
+## R=r4.4.3
+
 library(stringr)
 library(dplyr)
-#SLE
+
+# gene annotation for symbol transcript
 gene_grch37 <- read.csv("/node1/liuxy/index/gene_pos_grch37.82.csv")
 tissue_dirs <- c(pbmc = "/node1/liuxy/MediCell/pbmc/TWAS/output/TWAS/pbmc/SLE/")
 summary_df <- data.frame(
@@ -31,8 +34,8 @@ for (tissue_name in names(tissue_dirs)) {
     }
     peer_value <- case_when(
       tissue_name == "pbmc" ~ "peer2",
-      tissue_name == "tub" ~ "peer45",
-      tissue_name == "glom" ~ "peer45"
+      tissue_name == "tub" ~ "peer55",
+      tissue_name == "glom" ~ "peer55"
     )
     df_list <- list()
     for (file in csv_files) {
