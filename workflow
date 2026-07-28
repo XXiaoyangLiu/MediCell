@@ -2,54 +2,40 @@
 ## The entire analysis pipeline consists of 7 steps.
 
 ### Step 1 Cell proportion deconvolution estimation
-## Purpose: Process scRNA-seq data to generate reference matrices for Cibersortx and ENIGMA estimation, and infer cell-type expression profiles from bulk RNA-seq data
-## Script：
-    pre_sc_RNA-seq.R
-    Cibersort.R
-    ENIGMA.R
-    ENIGMA_qc.R
-## Input：
-## Output：
+## All input files for CIBERSORTx were prepared following the official guidelines hosted on the CIBERSORTx website. Instead of utilizing the full transcriptomic repertoire of single-cell RNA-seq profiles to build the signature reference panel, we suguest identified cell type marker genes using FindMarkers function implemented in Seurat.
+##For ENIGMA deconvolution, both the single cell reference atlas and bulk RNA-seq expression matrices were normalized to TPM values.
+
+myenigma <- create_ENIGMA(bulk = as.matrix(Bulk), ref = as.matrix(profile_pbmc), ref_type = "aggre")
+myenigma@result_cell_proportion <- cbs_frax_for_enigma
+myenigma.bak <- myenigma
+#myenigma <- ENIGMA_trace_norm(myenigma.bak, alpha = 0.1, do_cpm=F, preprocess = "log")
+#save(myenigma, file = paste0('myenigma_alpha_0.1.RData'))
+#enigma.cse.test <- sce2array(myenigma, norm_output = F)
+#save(enigma.cse.test, file = paste0("./count/enigma.cse.trace_alpha_0.1.RData"))
+
+##After deconvolution from ENIGMA, we recommend retaining exclusively protein coding genes and removing lowly expressed genes to mitigate technical noise.
 
 ### Step 2 Genotype preprocessing
 ## Purpose： Perform quality control and filtering on genotype data (SNP array as example) matched to bulk RNA-seq samples, and compute genotype dosages
-## Script：
-    genotype.R
-## Input:
-## Output：
+## Script：M03_DataProcess_genotype
 
 ### Step 3 Covariate selection
-## Purpose：Compute PEER factors to correct for latent confounding variables
-## Script：
-    peer.R
+## 
+## Script：M04_DataProcess_covariance_fordb.R
 
-## Input：
-## Output：
 
 ### Step 4 TWAS model training
 ## Purpose：Train prediction models to generate input files for S-PrediXcan
-## Script：
-    
-## Input：
-## Output：
+## Script：M04_ModelTraining.R
 
 ### Step 5 LD score preparation from matched 1000 Genomes population as covariates for S-PrediXcan
 ## Purpose：
-## Script：
-
-## Input：
-## Output：
+## Script：M07_covariance_for_TWAS
 
 ### Step 6 spredixcan calculation
 ## Purpose：
-## Script：
-
-## Input：
-## Output：
+## Script：M08_TWAS.sh
 
 ### Step 7 Downstream statistical analysis
 ## Purpose：
-## Script：
-
-## Input：
-## Output：
+## Script：M09_ResultStatistic.R
