@@ -5,14 +5,10 @@ conda activate imlatools
 cd "/node1/liuxy/MediCell/pbmc/TWAS/output/TWAS_2/"
 declare -A celltypes=(
     ["pbmc"]="CD4T CD8T NK B Mono DC"
-#    ["tub"]="PT LOH DCT CDICA CDICB MNP pDC NK NKT CD8T Bcell Th_cell"
-#    ["glom"]="Endo Podo MC NK NKT Th_cell CD8T Bcell MNP"
 )
 declare -A tissue_paths=(
     ["pbmc_db"]="/node1/liuxy/MediCell/pbmc/TWAS/usefile/db_2/"
     ["pbmc_cov"]="/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_6/"
-#    ["glom_db"]="/node1/liuxy/MediCell/pbmc/TWAS/usefile/db_2/"
-#    ["glom_cov"]="/node1/liuxy/MediCell/pbmc/TWAS/usefile/cov_2/"
 )
 disease_name="SLE"
 gwas_files=/node1/liuxy/MediCell/pbmc/TWAS/usefile/bentham_2015_26502338_sle_processed_beta.tsv
