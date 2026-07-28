@@ -1,6 +1,6 @@
-##从1000G中计算ld，再保留db中的所有snp，然后得到了用与计算TWAS的covariance
-    #从1000G中计算ld
+## Retained all SNPs contained in the database, and obtained the covariance for TWAS calculation
 #!/bin/bash
+## Calculate LD score
 for chr in {1..22}; do
 qsub -N "pseudobulk_ALL_chr${chr}" \
 -l nodes=tc6000:ppn=1 \
@@ -43,11 +43,9 @@ awk '
 ' | gzip > "\$OUTPUT"
 END
 
-echo "Submitted chromosome ${chr}"
 done
 
-
-##用本研究中的snp的ref alt校正ld的方向
+## change ref alt
 #!/bin/bash
 for chr in {1..22}; do
 qsub -N "final_fix_$chr" \
