@@ -1,6 +1,6 @@
-##bentham_2015NG
-##GWAS已经是hg19版本
-##算zscore，db和dosage等位基因顺序相反的SNP beta取负值
+## SLE bentham_2015NG
+## hg19
+## calculate zscore, and change ref alt beta with db
 library(data.table)
 library(stringr)
 a=fread('/node1/zhaoq/scTWAS_PBMC/SPrediXcan/input/GWAS/bentham_2015NG/bentham_2015_26502338_sle_efo0002690_1_gwas.sumstats.tsv.gz')
