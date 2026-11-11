@@ -1,6 +1,6 @@
 ### TWAS summary statistic
 ## R=r4.4.3
-
+#这个只是把TWAS的结果统计出来，所以任何组织任何trait的都是一样的
 library(stringr)
 library(dplyr)
 
