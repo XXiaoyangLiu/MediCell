@@ -57,7 +57,82 @@ echo "Submitted chr${chr}"
 done
 
 #pbmc
+#!/bin/bash
+for chr in {1..22}; do
+qsub -N "final_fix_chr${chr}" \
+-v chr="${chr}" \
+-l nodes=tc6000:ppn=1,walltime=48:00:00 \
+-o "/node1/liuxy/MediCell/pbmc_2/TWAS/usefile/cov_EUR_EAS/fix_${chr}.o" \
+-e "/node1/liuxy/MediCell/pbmc_2/TWAS/usefile/cov_EUR_EAS/fix_${chr}.e" \
+<< 'SCRIPTEND'
+#!/bin/bash
+ANNOT="/node1/liuxy/test_peer_glom/exp0.2/predictDB/usefile/new_gt/snp_annot/snp_annot.chr${chr}.txt"
+IN_GZ="/node1/liuxy/index/1000G_2/1000G_EUR_EAS/chr${chr}_EUR_EAS.txt.gz"
+OUT_GZ="/node1/liuxy/MediCell/pbmc_2/TWAS/usefile/cov_EUR_EAS/chr${chr}.txt.gz"
 
+zcat "$IN_GZ" | awk '
+BEGIN{
+    FS = "\t"; OFS = "\t"
+}
+NR == FNR {   
+    if(NR == 1) next
+    c = $1; p = $2;
+    std_r = $4; std_a = $5;
+    std_id = c "_" p "_" std_r "_" std_a
+    key = c "," p
+    ref_map[key] = std_r
+    alt_map[key] = std_a
+    id_map[key] = std_id
+    next
+}
+{
+    c = $1; pos = $3;
+    g_r = $4; g_a = $5;
+    key = c "," pos
+
+    if( !(key in ref_map) ) next
+
+    std_r = ref_map[key]
+    std_a = alt_map[key]
+    new_id = id_map[key]
+
+    if (g_r == std_r && g_a == std_a) {
+        final_ref = g_r
+        final_alt = g_a
+        final_af = $6
+        dos_line_start = 7
+    }
+    else if (g_r == std_a && g_a == std_r) {
+        final_ref = std_r
+        final_alt = std_a
+        final_af = 1.0 - $6
+
+        for(k=7; k<=NF; k++){
+            if($k != "NA"){
+                $k = 2 - $k
+            }
+        }
+        dos_line_start = 7
+    }
+    else {
+        next
+    }
+
+    $2 = new_id
+    $4 = final_ref
+    $5 = final_alt
+    $6 = final_af
+
+    print $0
+}
+' "$ANNOT" <(zcat "$IN_GZ") | gzip -c > "$OUT_GZ"
+
+echo "chr${chr} correction finished, output: $OUT_GZ"
+SCRIPTEND
+
+echo "Submitted chromosome ${chr}"
+sleep 1
+done 
 
 #kidney
 #!/bin/bash
