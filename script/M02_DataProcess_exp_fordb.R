@@ -1,4 +1,3 @@
-### QC after ENGMA for calculate PEER factor
 ## R = 3.6.3
 library(stringr)
 library(parallel)
