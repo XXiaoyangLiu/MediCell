@@ -2,7 +2,6 @@ library(ENIGMA)
 library(dplyr)
 setwd('/node1/liuxy/chplot/combind_plasma_B/enigma/output/')
 profile_pbmc <- read.table('/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/TPM_ENIGMA_ref_6CT.matrx')
-profile_pbmc_7 <- read.table('/node1/zhaoq/scTWAS_PBMC/ENIGMA/new_result_54genes/Aggre/TPM_ENIGMA_ref_7CT.matrx')
 Bulk <- read.csv('/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/pbmc_6_CellType_971samples_pseudobulk_TPM.txt', sep='\t', row.names=1)
 cbs_frax <- read.table("/node1/zhaoq/scTWAS_PBMC/ENIGMA/new_result_54genes/CIBERSORTx_Job129_Adjusted_pbmc_54genes.txt",header=T)
 
