@@ -1,12 +1,12 @@
 ### TWAS summary statistic
 ## R=r4.4.3
-#这个只是把TWAS的结果统计出来，所以任何组织任何trait的都是一样的
+#这个只是把TWAS的结果统计出来，所以任何组织任何trait的都是一样的,以pbmc为例
+
 library(stringr)
 library(dplyr)
-
-# gene annotation for symbol transcript
+#SLE
 gene_grch37 <- read.csv("/node1/liuxy/index/gene_pos_grch37.82.csv")
-tissue_dirs <- c(pbmc = "/node1/liuxy/MediCell/pbmc/TWAS/output/TWAS/pbmc/SLE/")
+tissue_dirs <- c(pbmc = "/node1/liuxy/MediCell/pbmc_2/TWAS/output/pbmc/SLE/")
 summary_df <- data.frame(
   tissue = character(),
   gwas_id = character(),
@@ -34,8 +34,8 @@ for (tissue_name in names(tissue_dirs)) {
     }
     peer_value <- case_when(
       tissue_name == "pbmc" ~ "peer2",
-      tissue_name == "tub" ~ "peer55",
-      tissue_name == "glom" ~ "peer55"
+      tissue_name == "tub" ~ "peer15",
+      tissue_name == "glom" ~ "peer15"
     )
     df_list <- list()
     for (file in csv_files) {
@@ -44,11 +44,11 @@ for (tissue_name in names(tissue_dirs)) {
         filename <- basename(file) 
         cell_type <- tools::file_path_sans_ext(filename)   
         ngeneindb <- nrow(dat)  
-        bonferroni_p <- p.adjust(dat$pvalue, method = "bonferroni")
+        bonferroni_p <- 0.05 / ngeneindb  
         dat$fdr_p <- p.adjust(dat$pvalue, method = "BH")
         dat$cell_type <- cell_type  
         dat$ngeneindb <- ngeneindb  
-        dat$bonferroni_p <- bonferroni_p  
+        dat$bonferroni_p <- p.adjust(dat$pvalue, method = "bonferroni") 
         dat$gwas_id <- gwas_id
         dat$tissue <- tissue_name
         dat$peer <- peer_value
@@ -71,11 +71,11 @@ for (tissue_name in names(tissue_dirs)) {
       all_sig_df <- unique(rbind(bonf_sig_df, fdr_sig_df))
       final_df$FDR.sig <- ifelse(final_df$fdr_p < 0.05, 'TRUE', 'FALSE')
       final_df$bonferroni_p.sig <- ifelse(final_df$bonferroni_p < 0.05, 'TRUE', 'FALSE')
-      cat("Statisitc"，tissue_name, ":\n")
-      cat("total gene", nrow(final_df), "\n")
-      cat("FDR significant genes", nrow(fdr_sig_df), "\n")
-      cat("Bonferroni significant genes", nrow(bonf_sig_df), "\n")
-
+      cat("\n统计信息 -", tissue_name, ":\n")
+      cat("总基因数量:", nrow(final_df), "\n")
+      cat("FDR显著基因数量:", nrow(fdr_sig_df), "\n")
+      cat("Bonferroni显著基因数量:", nrow(bonf_sig_df), "\n")
+      cat("\n按细胞类型统计:\n")
       write.csv(final_df, file.path(output_dir, "allcelltype_result.csv"), row.names = FALSE) 
       write.csv(bonf_sig_df, file.path(output_dir, "Bonfsig_allcelltype_result.csv"), row.names = FALSE)
       write.csv(fdr_sig_df, file.path(output_dir, "FDRsig_allcelltype_result.csv"), row.names = FALSE)
@@ -94,5 +94,4 @@ for (tissue_name in names(tissue_dirs)) {
     cat("No CSV files found in:", TWAS_dir, "\n")
   }
 }
-
 
