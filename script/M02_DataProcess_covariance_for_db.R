@@ -84,7 +84,7 @@ colnames(peer_fctr_rmcol) <- samples_ordr
 rownames(peer_fctr_rmcol) <- c("sex","pc1","pc2","pc3","pc4","pc5","pc6","age",paste0("peer", 1:2))
 peer_2 <- as.data.frame(peer_fctr_rmcol)
 path <- "/node1/liuxy/MediCell/pbmc/predictdb/usefile/covariance_for_predictDB/"
-write.table(peer_2, paste0(path, ct,"_peer2_check.txt"), sep="\t", row.names=T) 
+write.table(peer_2, paste0(path, ct,"_PCs_and_age_gender_peer_res_factors_covariates.txt"), sep="\t", row.names=T) 
 }
 
 
