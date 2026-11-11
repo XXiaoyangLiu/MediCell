@@ -69,6 +69,23 @@ peer_fctr_clcl <- function(i){
 prmtr <- expand.grid(celltypes) 
 mclapply(seq(nrow(prmtr)), peer_fctr_clcl, mc.cores = 6) #后台提交程序时，服务器申请7个核
 #整理成cov
+CELLTYPES <- c("CD4T","CD8T","NK","B","Mono","DC")
+for(ct in CELLTYPES) {
+load(paste0("/node1/liuxy/chplot/combind_plasma_B/enigma/output/peer/",ct,"_PCs_and_age_gender_peer_res.RData"))
+peer_fctr <- res$factors
+peer_fctr <- peer_fctr[,-9]
+peer_fctr_rmcol <- t(peer_fctr)
+tmp <- read.table(paste0("/node1/liuxy/chplot/combind_plasma_B/enigma/output/count/tpm0.1sample0.2/", ct, "_transformed_expression.txt"))
+rownames(tmp) <- gsub("^X", "", rownames(tmp))  
+samples_ordr <- rownames(tmp)
+rm(tmp,res)
+gc()
+colnames(peer_fctr_rmcol) <- samples_ordr
+rownames(peer_fctr_rmcol) <- c("sex","pc1","pc2","pc3","pc4","pc5","pc6","age",paste0("peer", 1:2))
+peer_2 <- as.data.frame(peer_fctr_rmcol)
+path <- "/node1/liuxy/MediCell/pbmc/predictdb/usefile/covariance_for_predictDB/"
+write.table(peer_2, paste0(path, ct,"_peer2_check.txt"), sep="\t", row.names=T) 
+}
 
 
 
