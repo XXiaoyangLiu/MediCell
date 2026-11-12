@@ -1,6 +1,4 @@
 #pbmc
-#nodes=tc6000
-#source ~/.bashrc
 #conda activate r3.6.3
 library(stringr)
 library(parallel)
