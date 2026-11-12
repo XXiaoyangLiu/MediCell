@@ -66,7 +66,7 @@ qsub -N "final_fix_chr${chr}" \
 -e "/node1/liuxy/MediCell/pbmc_2/TWAS/usefile/cov_EUR_EAS/fix_${chr}.e" \
 << 'SCRIPTEND'
 #!/bin/bash
-ANNOT="/node1/liuxy/MediCell/pbmc/predictdb/usefile/split_chr/snp_annot/snp_annot.chr${chr}.txt"
+ANNOT="/node1/liuxy/test_peer_glom/exp0.2/predictDB/usefile/new_gt/snp_annot/snp_annot.chr${chr}.txt"
 IN_GZ="/node1/liuxy/index/1000G_2/1000G_EUR_EAS/chr${chr}_EUR_EAS.txt.gz"
 OUT_GZ="/node1/liuxy/MediCell/pbmc_2/TWAS/usefile/cov_EUR_EAS/chr${chr}.txt.gz"
 
