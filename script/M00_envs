@@ -317,7 +317,7 @@ dependencies:
 prefix: /public/home/liuxy/miniconda3/envs/r4.4.3
 
 
-#R3.6.3
+#R3.6.3用于计算peer
 name: r3.6.3
 channels:
   - omgarcia
