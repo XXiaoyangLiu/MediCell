@@ -1,0 +1,23 @@
+library("Seurat")
+library("dplyr")
+# Read file
+data <- readRDS('/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_14_CellType_geneID_ProCoding.rds')
+#data中提取出那10个样本的，因为之前没写出(随机选出的，但之前没设置随机种子)
+random_samples  <- c('395_396', '222_223', '888_889', '564_565', '981_982', '358_359', '962_963', '353_354', '653_654', '610_611')
+data$cell_label <- as.character(data$cell_label)
+data$cell_label[data$cell_label %in% c("CD4 NC", "CD4 ET", "CD4 SOX4")] <- "CD4T"  
+data$cell_label[data$cell_label %in% c("CD8 ET", "CD8 NC", "CD8 S100B")] <- "CD8T"  
+data$cell_label[data$cell_label  %in% c("NK", "NK R")] <- "NK"
+data$cell_label[data$cell_label %in% c("B IN", "B Mem", "Plasma")] <- "B"
+data$cell_label[data$cell_label  %in% c("Mono C", "Mono NC")] <- "Mono"
+
+extracted_data_971samples <- data[, !data@meta.data$individual %in% random_samples]
+extracted_data_10samples <- subset(x=data, subset=individual%in% random_samples)
+
+#codin region
+Gene_pos <- read.csv("/node1/liuxy/index/gene_pos_hg19.csv")
+coding_ENSG <- Gene_pos[Gene_pos$gene_type %in% "protein_coding",]
+
+#合并细胞类型后的是7_CellType
+saveRDS(extracted_data_971samples,'/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_971samples.rds')
+saveRDS(extracted_data_10samples,'/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_10samples.rds')
