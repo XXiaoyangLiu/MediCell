@@ -21,3 +21,111 @@ coding_ENSG <- Gene_pos[Gene_pos$gene_type %in% "protein_coding",]
 #合并细胞类型后的是7_CellType
 saveRDS(extracted_data_971samples,'/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_971samples.rds')
 saveRDS(extracted_data_10samples,'/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_10samples.rds')
+
+library(scater)
+library(Seurat)
+library(tidyverse)
+library(cowplot)
+library(Matrix.utils)
+library(edgeR)
+library(dplyr)
+library(magrittr)
+library(Matrix)
+library(purrr)
+library(reshape2)
+library(S4Vectors)
+library(tibble)
+
+data = readRDS('/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_971samples.rds')
+pesudo_counts <- data@assays$RNA@counts
+pesudo_metadata <- data@meta.data
+pesudo_metadata$cluster_id <- factor(data@meta.data$cell_label)
+pesudo_metadata$sample_id <- factor(data@meta.data$individual)
+sce_bulk <- SingleCellExperiment(assays = list(counts = pesudo_counts),
+            colData = pesudo_metadata)
+groups <- colData(sce_bulk)[, c("cluster_id", "sample_id")]
+pb <- aggregate.Matrix(t(counts(sce_bulk)), groupings = groups$sample_id, fun = "sum")
+pb_t <- t(pb)
+write.table(pb_t, file = 'pbmc_6_CellType_971samples_pseudobulk_expCount.txt', sep = "\t")
+
+#singlecellexpriment装不上，所以用基础包直接做
+library(Matrix)
+
+data <- readRDS('/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_971samples.rds')
+pesudo_counts <- data@assays$RNA@counts
+pesudo_metadata <- data@meta.data
+pesudo_counts <- data@assays$RNA@counts
+pesudo_metadata <- data@meta.data
+pesudo_metadata$sample_id <- factor(pesudo_metadata$individual)
+sample_ids <- levels(pesudo_metadata$sample_id)
+pb <- matrix(0, 
+             nrow = nrow(pesudo_counts), 
+             ncol = length(sample_ids),
+             dimnames = list(rownames(pesudo_counts), sample_ids))
+
+for (i in seq_along(sample_ids)) {
+    sid <- sample_ids[i]
+    cells_in_sample <- which(pesudo_metadata$sample_id == sid)
+    if (length(cells_in_sample) > 0) {
+        pb[, i] <- rowSums(pesudo_counts[, cells_in_sample, drop = FALSE])
+    }
+}
+write.table(as.matrix(pb), file = '/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_971samples_pseudobulk_expCount.txt', sep = "\t", row.names = TRUE, col.names = NA)
+#tpm:
+mycounts<-read.csv("/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_971samples_pseudobulk_expCount.txt",sep='\t',check.names = FALSE,row.name = "")
+gene_effective_len = read.csv('/node1/zhaoq/scTWAS_PBMC/CIBERSORTx/geneid_efflen_gtf.txt',sep='\t')
+gene_effective_len=na.omit(gene_effective_len)
+mycounts$geneLength = gene_effective_len[match(rownames(mycounts), gene_effective_len$geneid),2]
+kb <- mycounts$geneLength / 1000
+head(kb)
+countdata <- mycounts[,1:971]
+head(countdata)
+rpk <- countdata / kb
+head(rpk)
+tpm <- t(t(rpk)/colSums(rpk) * 1000000)
+#20245 genes, 971 samples
+tpm=as.data.frame(tpm)
+tpm$GeneID <- rownames(tpm)  
+tpm <- tpm[, c("GeneID", setdiff(names(tpm), "GeneID"))]
+write.table(tpm, file = '/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/pbmc_6_CellType_971samples_pseudobulk_TPM.txt', sep = "\t",quote = FALSE, row.names = FALSE)
+
+#ref_10sample
+extracted_data_10samples= readRDS('/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_10samples.rds')
+tmp_scRNA_10sample = GetAssayData(extracted_data_10samples, layer = "counts", assay = "RNA")
+colnames(tmp_scRNA_10sample) = extracted_data_10samples$cell_label
+tmp_scRNA_10sample = data.frame(tmp_scRNA_10sample, check.names = F)   # 一定要有check.names = F，不然的话后面重新命名列名会有问题，matrix对象不允许列名相同，但data.frame对象允许
+tmp_scRNA_10sample = data.frame(gene = rownames(tmp_scRNA_10sample), tmp_scRNA_10sample, check.names = F)
+table(colnames(tmp_scRNA_10sample))
+write.table(tmp_scRNA_10sample, file = '/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_10samples_expCount.txt', sep = "\t") 
+
+mycounts  <- read.csv('/node1/liuxy/chplot/combind_plasma_B/cibersort/usefile/pbmc_6_CellType_10samples_expCount.txt',sep = '\t') #这个文件来自前一个代码块生成
+mycounts$gene <- NULL
+gene_effective_len <- read.csv('/node1/zhaoq/scTWAS_PBMC/CIBERSORTx/geneid_efflen_gtf.txt', sep = '\t')
+gene_effective_len <- na.omit(gene_effective_len)
+
+mycounts$geneLength <- gene_effective_len[match(rownames(mycounts), gene_effective_len$geneid), 2]
+kb <- mycounts$geneLength / 1000
+countdata <- mycounts[, 1:(ncol(mycounts) - 1)]
+rpk <- countdata / kb
+tpm <- t(t(rpk) / colSums(rpk) * 1000000)
+tpm <- as.data.frame(tpm)
+tpm$GeneID <- rownames(tpm)
+tpm <- tpm[, c("GeneID", setdiff(names(tpm), "GeneID"))]
+write.table(tpm, file = '/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/pbmc_6_CellType_10samples_pseudobulk_TPM.txt', sep = "\t", quote = FALSE, row.names = FALSE)
+
+forENIGMA_ref <- as.data.frame(fread('/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/pbmc_6_CellType_10samples_pseudobulk_TPM.txt', check.name=F))
+rn <- forENIGMA_ref$GeneID
+cn <- colnames(forENIGMA_ref)[-1]
+cell_types_sorted <- sort(names(table(cn))) 
+profile_pbmc <- NULL
+cell_type <- gsub(".[0-9]+$", "", cn)
+unique_ct <- unique(cell_type)
+
+profile_list <- list()
+for (ct in unique_ct) {
+    cols <- which(cell_type == ct) + 1
+    profile_list[[ct]] <- rowMeans(forENIGMA_ref[, cols, drop = FALSE])
+}
+profile_pbmc <- as.data.frame(profile_list)
+rownames(profile_pbmc) <- rn
+write.table(profile_pbmc, file="/node1/liuxy/chplot/combind_plasma_B/enigma/usefile/TPM_ENIGMA_ref_6CT.matrx")
