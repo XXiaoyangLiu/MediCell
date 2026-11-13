@@ -77,3 +77,8 @@ gunzip -c step1.1.vcf.gz | awk '{ printf "%s_%s_%s_%s\t%s\n", $1, $2, $4, $5, $3
 gunzip -c step2.vcf.gz | awk 'BEGIN {FS="\t"; OFS="\t"} {printf "%s",$1; for (i=2; i<=NF; i++) {split($i, arr, ":"); printf "\t%s",arr[1]} printf "\n"}' - | gzip > step3.vcf.gz
 gunzip -c step3.vcf.gz | awk 'NR==1 {print $0; next} {printf "%s",$1; for(i=2; i<=NF; i++) {split($i, arr, /[\/|]/); sum=0; for(j=1; j in arr; j++) {if(arr[j] ~ /[0-9]+/) sum+=arr[j];else sum+=0} printf "\t%s",sum} printf "\n"}'  - | gzip > step4.vcf.gz
 gunzip -c step4.vcf.gz | sed 's/#CHROM_POS_REF_ALT/varID/g' -> step5.vcf  # done with genotype input file
+
+#step6来自R
+cd /node1/liuxy/chplot/combind_plasma_B/genotype/
+python /node1/zhaoq/scTWAS_PBMC/predictDB/Tutorial-master/code/split_snp_annot_by_chr.py /node1/liuxy/chplot/combind_plasma_B/genotype/usefile/snp_annotation.txt /node1/liuxy/MediCell/pbmc/predictdb/usefile/split_chr/snp_annot/snp_annot
+python /node1/zhaoq/scTWAS_PBMC/predictDB/Tutorial-master/code/split_genotype_by_chr.py /node1/liuxy/chplot/combind_plasma_B/genotype/usefile/step6.vcf /node1/liuxy/MediCell/pbmc/predictdb/usefile/split_chr/genotype/genotype
