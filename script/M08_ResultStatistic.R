@@ -1,97 +1,46 @@
-### TWAS summary statistic
-## R=r4.4.3
-#这个只是把TWAS的结果统计出来，所以任何组织任何trait的都是一样的,以pbmc为例
-
-library(stringr)
-library(dplyr)
-#SLE
-gene_grch37 <- read.csv("/node1/liuxy/index/gene_pos_grch37.82.csv")
-tissue_dirs <- c(pbmc = "/node1/liuxy/MediCell/pbmc_2/TWAS/output/pbmc/SLE/")
-summary_df <- data.frame(
-  tissue = character(),
-  gwas_id = character(),
-  total_genes = integer(),
-  fdr_sig = integer(),
-  bonf_sig = integer(),
-  stringsAsFactors = FALSE
-)
-for (tissue_name in names(tissue_dirs)) {
-  TWAS_dir <- tissue_dirs[tissue_name]
-  csv_files <- list.files(TWAS_dir, pattern = "\\.csv$", full.names = TRUE)
-  
-  if (length(csv_files) > 0) {
-    gwas_id <- "SLE" 
-    output_dir <- file.path(TWAS_dir, "summary")
-    cat("Processing tissue:", tissue_name, "\n")
-    cat("GWAS:", gwas_id, "\n")
-    cat("Directory:", TWAS_dir, "\n")
-    
-    if (!dir.exists(output_dir)) {
-      dir.create(output_dir, recursive = TRUE)
-      cat("Created:", output_dir, "\n")
-    } else {
-      cat("Directory exists:", output_dir, "\n")
-    }
-    peer_value <- case_when(
-      tissue_name == "pbmc" ~ "peer2",
-      tissue_name == "tub" ~ "peer15",
-      tissue_name == "glom" ~ "peer15"
-    )
-    df_list <- list()
-    for (file in csv_files) {
-      tryCatch({
-        dat <- read.csv(file)  
-        filename <- basename(file) 
-        cell_type <- tools::file_path_sans_ext(filename)   
-        ngeneindb <- nrow(dat)  
-        bonferroni_p <- 0.05 / ngeneindb  
-        dat$fdr_p <- p.adjust(dat$pvalue, method = "BH")
-        dat$cell_type <- cell_type  
-        dat$ngeneindb <- ngeneindb  
-        dat$bonferroni_p <- p.adjust(dat$pvalue, method = "bonferroni") 
-        dat$gwas_id <- gwas_id
-        dat$tissue <- tissue_name
-        dat$peer <- peer_value
-        dat$gene_name <- gene_grch37$gene_name[match(dat$gene, gene_grch37$gene_id)]
-        df_list[[filename]] <- dat
-        cat("Processed:", filename, "\n")
-      }, error = function(e) {
-        cat("File error:", file, "\nError:", e$message, "\n")
-      })
-    }
-    
-    if (length(df_list) == 0) {
-      cat("Warning: No valid CSV files processed for", tissue_name, "\n")
-    } else {
-      final_df <- bind_rows(df_list) 
-      colnames(final_df)[1:2] <- c('gene_id', 'gene_name')
-      
-      bonf_sig_df <- subset(final_df, bonferroni_p < 0.05)
-      fdr_sig_df <- subset(final_df, fdr_p < 0.05)
-      all_sig_df <- unique(rbind(bonf_sig_df, fdr_sig_df))
-      final_df$FDR.sig <- ifelse(final_df$fdr_p < 0.05, 'TRUE', 'FALSE')
-      final_df$bonferroni_p.sig <- ifelse(final_df$bonferroni_p < 0.05, 'TRUE', 'FALSE')
-      cat("\n统计信息 -", tissue_name, ":\n")
-      cat("总基因数量:", nrow(final_df), "\n")
-      cat("FDR显著基因数量:", nrow(fdr_sig_df), "\n")
-      cat("Bonferroni显著基因数量:", nrow(bonf_sig_df), "\n")
-      cat("\n按细胞类型统计:\n")
-      write.csv(final_df, file.path(output_dir, "allcelltype_result.csv"), row.names = FALSE) 
-      write.csv(bonf_sig_df, file.path(output_dir, "Bonfsig_allcelltype_result.csv"), row.names = FALSE)
-      write.csv(fdr_sig_df, file.path(output_dir, "FDRsig_allcelltype_result.csv"), row.names = FALSE)
-      write.csv(all_sig_df, file.path(output_dir, "BonFDRsig_allcelltype_result.csv"), row.names = FALSE)
-      
-      cat("\nOutput saved to:", output_dir, "\n")
-      summary_df <- rbind(summary_df, data.frame(
-        tissue = tissue_name,
-        gwas_id = gwas_id,
-        total_genes = nrow(final_df),
-        fdr_sig = nrow(fdr_sig_df),
-        bonf_sig = nrow(bonf_sig_df)
-      ))
-    }
-  } else {
-    cat("No CSV files found in:", TWAS_dir, "\n")
-  }
+# M08: selected CTs, named columns, per-CT corrections (historical output layout).
+required <- function(key) {
+  value <- Sys.getenv(key)
+  if (!nzchar(value)) stop("Required environment: ", key)
+  value
 }
-
+TWAS_dir <- required("MC_TWAS_DIR")
+gwas_id <- required("MC_GWAS_ID")
+output_dir <- required("MC_SUMMARY_OUT")
+celltypes <- strsplit(required("MC_CELLTYPES"), "[[:space:]]+")[[1]]
+if (anyDuplicated(celltypes) || any(!grepl("^[A-Za-z0-9_.-]+$", celltypes))) stop("Invalid CT selection")
+genes <- read.csv(required("MC_GENE_POS"), stringsAsFactors=FALSE, check.names=FALSE)
+if (!all(c("gene_id", "gene_name") %in% names(genes)) || anyNA(genes$gene_id) ||
+    any(!nzchar(genes$gene_id)) || anyDuplicated(genes$gene_id)) stop("Invalid/duplicate gene_pos gene_id mapping")
+columns <- c("gene", "gene_name", "zscore", "effect_size", "pvalue", "var_g", "pred_perf_r2",
+             "pred_perf_pval", "pred_perf_qval", "n_snps_used", "n_snps_in_cov", "n_snps_in_model")
+df_list <- lapply(celltypes, function(ct) {
+  file <- file.path(TWAS_dir, paste0(ct, ".csv"))
+  dat <- read.csv(file, stringsAsFactors=FALSE, check.names=FALSE)
+  if (!nrow(dat) || anyDuplicated(names(dat)) || !setequal(columns, names(dat))) stop("Empty/unknown TWAS schema: ", file)
+  dat <- dat[columns]
+  if (!is.numeric(dat$pvalue) || any(!is.finite(dat$pvalue)) || any(dat$pvalue < 0 | dat$pvalue > 1) ||
+      anyNA(dat$gene) || any(!nzchar(dat$gene)) || anyDuplicated(dat$gene)) stop("Invalid TWAS gene/pvalue: ", file)
+  mapping <- match(dat$gene, genes$gene_id)
+  if (anyNA(mapping) || anyNA(genes$gene_name[mapping]) || any(!nzchar(genes$gene_name[mapping]))) stop("Unmatched/missing gene_pos mapping: ", file)
+  dat$fdr_p <- p.adjust(dat$pvalue, method="BH")
+  dat$cell_type <- ct
+  dat$ngeneindb <- nrow(dat)
+  dat$bonferroni_p <- p.adjust(dat$pvalue, method="bonferroni")
+  dat$gwas_id <- gwas_id
+  dat$gene_name <- genes$gene_name[mapping]
+  names(dat)[names(dat)=="gene"] <- "gene_id"
+  dat
+})
+final_df <- do.call(rbind, df_list)
+bonf_sig_df <- subset(final_df, bonferroni_p < 0.05)
+fdr_sig_df <- subset(final_df, fdr_p < 0.05)
+all_sig_df <- unique(rbind(bonf_sig_df, fdr_sig_df))
+final_df$FDR.sig <- ifelse(final_df$fdr_p < 0.05, "TRUE", "FALSE")
+final_df$bonferroni_p.sig <- ifelse(final_df$bonferroni_p < 0.05, "TRUE", "FALSE")
+dir.create(output_dir, recursive=TRUE, showWarnings=FALSE)
+write.csv(final_df, file.path(output_dir, "allcelltype_result.csv"), row.names=FALSE)
+write.csv(bonf_sig_df, file.path(output_dir, "Bonfsig_allcelltype_result.csv"), row.names=FALSE)
+write.csv(fdr_sig_df, file.path(output_dir, "FDRsig_allcelltype_result.csv"), row.names=FALSE)
+write.csv(all_sig_df, file.path(output_dir, "BonFDRsig_allcelltype_result.csv"), row.names=FALSE)
+cat("Total:", nrow(final_df), "FDR:", nrow(fdr_sig_df), "Bonferroni:", nrow(bonf_sig_df), "union:", nrow(all_sig_df), "\n")

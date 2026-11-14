@@ -1,0 +1,14 @@
+name: imlatools
+channels:
+  - https://conda.anaconda.org/bioconda
+  - https://conda.anaconda.org/conda-forge
+dependencies:
+  - python=3.10
+  - pandas
+  - numpy
+  - scipy
+  - sqlalchemy
+  - bcftools
+  - make
+  - gcc
+  - gxx
