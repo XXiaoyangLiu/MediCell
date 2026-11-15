@@ -1,0 +1,15 @@
+name: R4.4.3
+channels:
+  - https://conda.anaconda.org/conda-forge
+dependencies:
+  - r-base=4.4.3
+  - r-dplyr
+  - r-data.table
+  - r-stringr
+  - r-rsqlite
+  - r-r.utils
+  - r-glmnet
+  - r-reshape2
+  - r-doparallel
+  - r-foreach
+  - r-remotes

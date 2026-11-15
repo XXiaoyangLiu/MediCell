@@ -1,0 +1,14 @@
+name: r3.6.3
+channels:
+  - https://conda.anaconda.org/conda-forge
+dependencies:
+  - r-base=3.6.3
+  - r-dplyr
+  - r-data.table
+  - r-stringr
+  - r-rcpp
+  - make
+  - gcc
+  - gxx
+  - swig
+  - cmake<4
