@@ -67,8 +67,7 @@ python3 medicell.py --output-dir run_out --all \
 ```
 
 Every input path pattern takes a `{chr}` placeholder that the driver expands
-per chromosome (1–22 by default). The covariates file is required for M02cov
-(format below).
+per chromosome (1–22 by default). The covariates file is required for `peerCov` (`M02cov`, format below).
 
 ### Run modes
 
@@ -121,7 +120,7 @@ Existing tool and environment options still apply.
 
 ### GWAS modes
 
-M05align / M05metal / M05filter require an **explicit** mode; changing
+`alignGWAS` / `metaGWAS` / `filterGWAS` (`M05align`/`M05metal`/`M05filter`) require an **explicit** mode; changing
 `--gwas-id` alone never silently switches what data is analyzed:
 
 - `--gwas-profile sle-legacy-pbmc | sle-legacy-kidney` — bit-exact
@@ -147,7 +146,7 @@ M05align / M05metal / M05filter require an **explicit** mode; changing
   `<gwas_id>_meta` output prefix and filter policy `none` by default.
 
 The active mode is recorded in `M04_gwas/gwas_run.json`, so re-running
-M05metal/M05filter/M07 in the same output directory recovers it. M07 can also
+`metaGWAS`/`filterGWAS`/`runTWAS` in the same output directory recovers it. `runTWAS` can also
 run on any external summary with `--gwas-summary FILE` (cannot be combined
 with the GWAS steps). `--gwas-id` is a label used in standard-mode output
 names and reports only.
@@ -155,10 +154,10 @@ names and reports only.
 ### Explicit analysis configuration
 
 - `--cell-types` is always required and must match the reference cell-type names.
-- `--peer-nk` and `--peer-keep` are required only for M02cov. Use `0`/`0`
+- `--peer-nk` and `--peer-keep` are required only for `peerCov` (`M02cov`). Use `0`/`0`
   for known covariates only; no PEER factors are inferred in this mode.
-- `--twas-model-set unfiltered|filtered-signif` is required for M04db and M07.
-- `--training-population` is optional metadata for M04db (default `unspecified`).
+- `--twas-model-set unfiltered|filtered-signif` is required for `buildDB` (`M04db`) and `runTWAS` (`M07`).
+- `--training-population` is optional metadata for `buildDB` (default `unspecified`).
 
 Sample IDs default to exact matching and gene annotations default to the
 standard schema. Old inputs requiring R-style sample names or a missing
@@ -177,9 +176,9 @@ they are no longer selected automatically:
 | Tubule | `Bcell,CD8T,CDICA,CDICB,DCT,LOH,MNP,NK,NKT,PT,Th_cell,Plasmacytoid_DC` | 60 / 11 | `filtered-signif` |
 
 Matching these settings alone does not guarantee identical results: input files,
-GWAS mode, filtering, sample-ID policy and training seed must also match. M08 omits
-the `tissue` and `peer` label columns; association statistics and corrections are
-unchanged by removing these labels.
+GWAS mode, filtering, sample-ID policy and training seed must also match. `summarizeTWAS` (`M08`) omits
+the `tissue` and `peer` label columns; association statistics and per-cell-type
+corrections are unchanged by removing these labels.
 
 ### Parameters
 
@@ -192,11 +191,11 @@ according to the selected steps above; tuning options retain their defaults:
 | `--bulk-tpm` | bulk TPM expression matrix (genes x samples) |
 | `--enigma-ref` | single-cell reference matrix (TPM, aggregated by cell type) |
 | `--cibersortx-frax` | CIBERSORTx adjusted cell-fraction output |
-| `--covariates` | covariates txt, first column = sample ID, then covariate columns (required for M02cov; format below) |
+| `--covariates` | covariates txt, first column = sample ID, then covariate columns (required for `peerCov`; format below) |
 | `--cat-covs` | comma-separated categorical covariate columns to dummy-encode (default none) |
 | `--min-level-count` | drop categorical levels with fewer samples (default 5) |
-| `--peer-nk` | PEER hidden factors per cell type; explicit value required for M02cov |
-| `--peer-keep` | PEER factors kept; explicit value required for M02cov; must be ≤ `--peer-nk` |
+| `--peer-nk` | PEER hidden factors per cell type; explicit value required for `peerCov` |
+| `--peer-keep` | PEER factors kept; explicit value required for `peerCov`; must be ≤ `--peer-nk` |
 | `--snp-annot-pattern` | per-chromosome SNP annotation, with `{chr}` placeholder |
 | `--genotype-pattern` | per-chromosome genotype dosage, with `{chr}` placeholder |
 | `--gene-annot` | gene annotation (parsed; protein-coding genes recommended) |
@@ -216,7 +215,7 @@ Input contracts:
 | `--genome-build` | `GRCh37` (default) or `GRCh38`; declared for this cohort's coordinates, no liftover is performed |
 | `--training-population` | optional population label stored with the trained models (default `unspecified`) |
 | `--ld-panel-id` | LD panel id used in dosage/covariance file names (default `EUR_EAS`) |
-| `--twas-model-set` | `unfiltered` or `filtered-signif`; required for M04db/M07 |
+| `--twas-model-set` | `unfiltered` or `filtered-signif`; required for `buildDB`/`runTWAS` |
 
 #### Covariates file format
 
@@ -252,18 +251,20 @@ Run control:
 | Parameter | Description |
 |---|---|
 | `--alpha` | ENIGMA alpha (default 0.1) |
-| `--tpm-min` | M02exp gene filter: min inferred TPM (default 0.1) |
-| `--min-pct` | M02exp gene filter: min sample fraction, 0–1 (default 0.01) |
-| `--min-samples` | M02exp gene filter: min sample count floor (default 5) |
+| `--tpm-min` | `normExp` gene filter: min inferred TPM (default 0.1) |
+| `--min-pct` | `normExp` gene filter: min sample fraction, 0–1 (default 0.01) |
+| `--min-samples` | `normExp` gene filter: min sample count floor (default 5) |
 | `--all` | run all 12 steps; also the default when no mode is specified |
-| `--steps STEP [STEP ...]` | run a subset in pipeline order; space/comma-separated; mutually exclusive with `--all`; old names are aliases |
+| `--steps STEP [STEP ...]` | run a subset in pipeline order; space/comma-separated; old `M01`–`M08` names are aliases |
+| `--<step>` | single-step flags (e.g. `--inferExp`, `--summarizeTWAS`), combinable across steps |
 | `--chromosomes` | comma-separated chromosomes (default 1–22) |
 | `--cell-types` | explicit space/comma-separated cell-type list; required |
-| `--seed` | explicit M03 training seed; forces serial training (`--training-cores 1`) |
-| `--training-cores` | cores for M03 training (default 4) |
-| `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip the M06ld extraction |
+| `--cores` | unified parallel cores/workers across all pipeline steps (default 4) |
+| `--seed` | explicit `trainModel` seed; forces serial inner training (`--training-cores 1`) |
+| `--training-cores` | inner `trainModel` cores per `(cell_type, chr)` job (defaults from `--cores`) |
+| `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip `extractLD` (`M06ld`) extraction |
 | `--gwas-id` | trait label for standard-mode output names and reports (default SLE) |
-| `--gwas-summary` | explicit filtered GWAS summary for M07 |
+| `--gwas-summary` | explicit filtered GWAS summary for `runTWAS` (`M07`) |
 
 Environment/tools (defaults match `setup.sh`):
 
@@ -274,34 +275,35 @@ Environment/tools (defaults match `setup.sh`):
 | `--metal-bin` | METAL binary (default `tools/METAL/metal`) |
 | `--bcftools` / `--bcf-plugins` | bcftools executable / plugin dir |
 
-M03 always uses the bundled training core, `script/helpers/gtex_v7_nested_cv_elnet.R`.
+`trainModel` (`M03`) always uses the bundled training core, `script/helpers/gtex_v7_nested_cv_elnet.R`.
 
 ### Pipeline steps
 
-Executed in dependency order (canonical names; old aliases in parentheses):
+Executed in dependency order (canonical names; legacy aliases in parentheses):
 
 | Step | What it does |
 |---|---|
-| `M01` | ENIGMA trace-norm deconvolution with CIBERSORTx fractions |
-| `M02exp` | filter low-expression genes (TPM > `--tpm-min` in `max(--min-pct x N, --min-samples)` samples), inverse-normal transform per cell type |
-| `M02cov` | PEER factors + covariates for model training |
-| `M03` | nested-CV elastic-net GReX models (per cell type x chromosome) |
-| `M04db` (`M06`) | SQLite weight databases for S-PrediXcan |
-| `M05align` (`M04align`) | align GWAS studies to the genotype panel (allele flips, effect direction) |
-| `M05metal` (`M04metal`) | METAL inverse-variance meta-analysis |
-| `M05filter` (`M04filter`) | post-meta filtering (policy-dependent) |
-| `M06ld` (`M05ld`) | 1000G dosages aligned to the panel annotation |
-| `M06cov` (`M05cov`) | LD covariance matrices per cell type |
-| `M07` | S-PrediXcan association per cell type |
-| `M08` | FDR / Bonferroni result summary |
+| `inferExp` (`M01`) | ENIGMA trace-norm deconvolution with CIBERSORTx fractions |
+| `normExp` (`M02exp`) | filter low-expression genes (TPM > `--tpm-min` in `max(--min-pct x N, --min-samples)` samples), per-gene inverse-normal transform per cell type |
+| `peerCov` (`M02cov`) | PEER factors + covariates for model training (parallelized across cell types) |
+| `trainModel` (`M03`) | nested-CV elastic-net GReX models (parallelized across cell types x chromosomes and genes) |
+| `buildDB` (`M04db`, `M06`) | SQLite weight databases for S-PrediXcan (parallelized across cell types) |
+| `alignGWAS` (`M05align`, `M04align`) | align GWAS studies to the genotype panel (allele flips, effect direction) |
+| `metaGWAS` (`M05metal`, `M04metal`) | METAL inverse-variance meta-analysis |
+| `filterGWAS` (`M05filter`, `M04filter`) | post-meta filtering (policy-dependent) |
+| `extractLD` (`M06ld`, `M05ld`) | 1000G dosages aligned to the panel annotation (parallelized across chromosomes) |
+| `buildLD` (`M06cov`, `M05cov`) | LD covariance matrices per cell type (parallelized across cell types) |
+| `runTWAS` (`M07`) | S-PrediXcan association per cell type (parallelized across cell types) |
+| `summarizeTWAS` (`M08`) | per-cell-type FDR / Bonferroni result summary |
 
-M03 dominates total runtime (roughly proportional to cell types x
-chromosomes). Use `--steps` and `--chromosomes` to run disjoint subsets in
-parallel sessions; results merge naturally into the same output directory.
+`trainModel` dominates total runtime (roughly proportional to cell types x
+chromosomes). `--cores` parallelizes both `(cell_type, chromosome)` jobs and
+inner gene training, and `--steps` / `--chromosomes` can also split disjoint
+subsets across separate sessions into the same output directory.
 
-M04db accepts only the current M03 24-column model summaries with explicit
-`gene_name` and `gene_id`. Old 23-column summaries are rejected; rerun M03
-rather than relying on automatic column repair. The significant-model thresholds
+`buildDB` (`M04db`) accepts only the current 24-column `trainModel` summaries with
+explicit `gene_name` and `gene_id`. Old 23-column summaries are rejected; rerun
+`trainModel` rather than relying on automatic column repair. The significant-model thresholds
 remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 `{ct}_models.db` is created. Existing cached databases are not deleted.
 
@@ -357,26 +359,29 @@ It connects cell-type-resolved TWAS results and cell-type expression profiles
 with LINCS L1000 perturbation signatures (`fgsea`) to score candidate compounds
 for each cell type:
 
-1. **`L01` (`script/L01_lincs_prepare.R`)**: Splits TWAS summary statistics by
-   z-score sign (`pos`: `zscore > 0`, `neg`: `zscore < 0`) and builds a
-   gene-symbol x cell-type expression matrix (either from `--exp-matrix` or by
-   averaging M01 ENIGMA `enigma.cse.test` across samples per cell type).
-2. **`L02` (`script/L02_lincs_enrichment.R`)**: Runs `fgsea` on the ranked
-   directional TWAS genes against `data/lincs/LINCS_PRL_top250_human.gmt`,
-   annotates hits with L1000 Phase 1/2 perturbation metadata (`GSE92742` and
-   `GSE70138` in `data/lincs/`), and filters hits by significance and NES sign
-   (default `NES < 0`, `pval < 0.05`).
-3. **`L03` (`script/L03_lincs_drug_score.sh`)**: Selects the top perturbations
-   per run, extracts their leading-edge genes and per-cell-type TWAS z-scores,
-   computes cross-cell-type expression specificity (`expZscore`), and sums
-   `RankScore = |TWAS_zscore| * expZscore` over each drug's leading-edge genes
-   to produce a drug x cell-type prioritization matrix.
+1. **`prepLincs` (`L01`, `script/L01_lincs_prepare.R`)**: Splits TWAS summary
+   statistics by z-score sign (`pos`: `zscore > 0`, `neg`: `zscore < 0`) and
+   builds a gene-symbol x cell-type expression matrix (either from `--exp-matrix`
+   or by averaging `inferExp` ENIGMA `enigma.cse.test` across samples per cell type).
+2. **`enrichLincs` (`L02`, `script/L02_lincs_enrichment.R`)**: Runs `fgsea` on
+   the ranked directional TWAS genes against `data/lincs/LINCS_PRL_top250_human.gmt`
+   (or a custom `--lincs-gmt`), annotates hits with L1000 Phase 1/2 perturbation
+   metadata (`GSE92742` and `GSE70138` in `data/lincs/`), and filters hits by
+   significance and NES sign (default `NES < 0`, `pval < 0.05`).
+3. **`scoreLincs` (`L03`, `script/L03_lincs_drug_score.sh`)**: Selects the top
+   perturbations per run, extracts their leading-edge genes and per-cell-type
+   TWAS z-scores, computes cross-cell-type expression specificity (`expZscore`),
+   and sums `RankScore = |TWAS_zscore| * expZscore` over each drug's
+   leading-edge genes to produce a drug x cell-type prioritization matrix.
 
 Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
 `lincsTissueSpecific.R`, `formatLeadingSpecific.pl`, `formatZscoreSpecific.pl`,
-`getZscoreSpecificMatrix.R`). Runtime requires an R environment with `fgsea`,
-`dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs); `medicell.py`
-auto-detects `R4.4.3` or `r_4.6.1`, or accepts `--lincs-env <env>`.
+`getZscoreSpecificMatrix.R`). Because `setup.sh` provisions only Part 1 envs
+(`R4.4.3`, `r3.6.3`, `imlatools`), Part 2 additionally requires an R environment
+with `fgsea`, `dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs),
+selected automatically (`R4.4.3` / `r_4.6.1`) or via `--lincs-env <env>`. Large
+GMT files (`data/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
+them locally under `data/lincs/` or pass `--lincs-gmt`.
 
 ### Quick start
 
@@ -419,7 +424,7 @@ python3 medicell.py lincs \
 |---|---|---|
 | `--output-dir` | required | Output root (may reuse Part 1 `--output-dir` containing `M01`/`M08`). |
 | `--cores` | `4` | Unified parallel worker/core budget across all steps (`--training-cores` / `--lincs-cores` still work as overrides). |
-| `--steps` | `L01,L02,L03` | Subset of steps to run (defaults to `L01,L03` when `--lincs-sig-csv` is set). |
+| `--steps` / `--<step>` | `prepLincs,enrichLincs,scoreLincs` | Steps to run (`L01,L02,L03` aliases work; defaults to `prepLincs,scoreLincs` with `--lincs-sig-csv`). |
 | `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |
 | `--label` / `--tissue` | `cohort` | Cohort/compartment label used in output file names (no tissue presets). |
 | `--direction` | `pos` | TWAS z-score direction: `pos` (`>0`), `neg` (`<0`), or `both`. |
