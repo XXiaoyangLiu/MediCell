@@ -26,4 +26,5 @@ python3 -u medicell.py --all --output-dir "$OUT" \
     --g1000-samples test/data/ld_samples.txt --ld-panel-id MINI_EUR_EAS \
     --gene-pos test/data/gene_names.csv 2>&1 | tee "$OUT/run.log"
 python3 test/check_results.py "$OUT"
+bash test/run_lincs.sh "$OUT" 2>&1 | tee "$OUT/lincs.log"
 printf 'Elapsed seconds: %s\n' "$SECONDS" | tee "$OUT/duration.txt"
