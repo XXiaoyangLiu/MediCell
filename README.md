@@ -72,47 +72,48 @@ per chromosome (1–22 by default). The covariates file is required for M02cov
 
 ### Run modes
 
-Use `--all` for the complete pipeline. Omitting both `--all` and `--steps`
-also runs the complete pipeline, preserving existing commands.
+Use `--all` for the complete pipeline (or omit step selectors). To run a
+single step or a subset, use the descriptive step flags (`--inferExp`,
+`--summarizeTWAS`, etc.), positional subcommand (`medicell.py inferExp ...`),
+or `--steps`:
 
 ```bash
-# Run only the summary step, using existing TWAS results in run_out
-python3 medicell.py --output-dir run_out --cell-types B \
-    --steps M08 --gene-pos data/gene_pos_grch37.82.csv
+# Run only ENIGMA expression inference (M01)
+python3 medicell.py --inferExp --output-dir run_out --cell-types B,CD4T \
+    --bulk-tpm data/bulk_TPM.txt --enigma-ref data/sc_reference_TPM.matrx \
+    --cibersortx-frax data/CIBERSORTx_fractions.txt
 
-# Run several steps, using existing M01 results in run_out
-python3 medicell.py --output-dir run_out --cell-types B \
-    --peer-nk 2 --peer-keep 2 \
-    --steps M02exp M02cov --covariates data/covariates.txt
+# Run only the TWAS summary step (M08), using existing TWAS results in run_out
+python3 medicell.py --summarizeTWAS --output-dir run_out --cell-types B \
+    --gene-pos data/gene_pos_grch37.82.csv
 
-# Comma-separated lists remain supported
-python3 medicell.py --output-dir run_out --cell-types B \
-    --peer-nk 2 --peer-keep 2 \
-    --steps M02exp,M02cov --covariates data/covariates.txt
+# Combine multiple step flags (or use --steps normExp,peerCov)
+python3 medicell.py --normExp --peerCov --output-dir run_out --cell-types B \
+    --peer-nk 2 --peer-keep 2 --covariates data/covariates.txt
 ```
 
-`--all` and `--steps` are mutually exclusive. Selected steps always execute
-in the pipeline order listed below, regardless of argument order; duplicates
-run only once. Unknown or empty step names are rejected before execution.
-Only selected steps run: prerequisites are **not** run automatically. Reuse
-the same output directory containing the required upstream results, with
-consistent alpha, cell types, PEER configuration and chromosomes.
+`--all`, `--steps`, and `--<step>` flags are mutually exclusive (combining
+multiple `--<step>` flags is supported). Selected steps always execute in
+pipeline order, regardless of argument order; duplicates run only once.
+Only selected steps run: prerequisites are **not** run automatically.
 
-Old step names still work as aliases: `M06` (database), `M04align`/`M04metal`/
-`M04filter` (GWAS), `M05ld`/`M05cov` (LD). The driver prints the resolved
-alias mapping. The bare name `M06` keeps its historical "build database"
-meaning and is never reinterpreted as an LD step.
+Canonical step names (all legacy `M01`–`M08` / `M06` / `M04*` / `M05*` names
+remain valid aliases in `--steps`):
 
-Only inputs consumed by the selected steps are required:
-
-| Selected step | Required data arguments |
-|---|---|
-| `M01` | `--bulk-tpm`, `--enigma-ref`, `--cibersortx-frax` |
-| `M02cov` | `--covariates` |
-| `M03` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
-| `M05align` | `--snp-annot-file`, `--gwas-dir` + a GWAS mode (below) |
-| `M06ld` | `--snp-annot-pattern`; also `--g1000-vcf-pattern` and `--g1000-samples` unless `--ld-dosage-dir` is supplied |
-| `M08` | `--gene-pos` |
+| Step (`--<step>`) | Legacy alias | Script | Required data arguments |
+|---|---|---|---|
+| `inferExp` | `M01` | `M01_ENIGMA.R` | `--bulk-tpm`, `--enigma-ref`, `--cibersortx-frax` |
+| `normExp` | `M02exp` | `M02_DataProcess_exp_fordb.R` | (uses `inferExp` output) |
+| `peerCov` | `M02cov` | `M02_DataProcess_covariance_for_db.R` | `--covariates` |
+| `trainModel` | `M03` | `M03_ModelTraining.R` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
+| `buildDB` | `M04db`, `M06` | `M04_Makedb.R` | (uses `trainModel` output) |
+| `alignGWAS` | `M05align`, `M04align` | `M05_DataProcess_GWAS_align4METAL.R` | `--snp-annot-file`, `--gwas-dir` + GWAS mode |
+| `metaGWAS` | `M05metal`, `M04metal` | `M05_DataProcess_GWAS_metal.sh` | (uses `alignGWAS` output) |
+| `filterGWAS` | `M05filter`, `M04filter` | `M05_DataProcess_GWAS_metal_filter.R` | (uses `metaGWAS` output) |
+| `extractLD` | `M06ld`, `M05ld` | `M06_LD.sh` | `--snp-annot-pattern`; also `--g1000-vcf-pattern`, `--g1000-samples` unless `--ld-dosage-dir` |
+| `buildLD` | `M06cov`, `M05cov` | `M06_Makeld.sh` | (uses `buildDB` + `extractLD` output) |
+| `runTWAS` | `M07` | `M07_TWAS.sh` | (uses `buildDB` + `buildLD` + `filterGWAS` / `--gwas-summary`) |
+| `summarizeTWAS` | `M08` | `M08_ResultStatistic.R` | `--gene-pos` |
 
 Other steps use upstream results and need no additional original data
 arguments. For multiple steps, provide the union of their required inputs.

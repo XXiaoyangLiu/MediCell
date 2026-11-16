@@ -47,42 +47,77 @@ import threading
 REPO = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.join(REPO, "script")
 
-ALL_STEPS = ["M01", "M02exp", "M02cov", "M03", "M04db", "M05align", "M05metal",
-             "M05filter", "M06ld", "M06cov", "M07", "M08"]
+ALL_STEPS = [
+    "inferExp", "normExp", "peerCov", "trainModel", "buildDB",
+    "alignGWAS", "metaGWAS", "filterGWAS",
+    "extractLD", "buildLD", "runTWAS", "summarizeTWAS",
+]
 
-# Old step names keep working so historical commands do not break.
+STEP_DESCRIPTIONS = {
+    "inferExp": "deconvolve bulk TPM into cell-type expression (ENIGMA)",
+    "normExp": "filter expressed genes and INT-transform per cell type",
+    "peerCov": "estimate PEER hidden factors and format covariates",
+    "trainModel": "train cell-type elastic-net GReX models",
+    "buildDB": "build PrediXcan SQLite weight databases",
+    "alignGWAS": "align GWAS summary statistics to the SNP panel",
+    "metaGWAS": "run METAL GWAS meta-analysis",
+    "filterGWAS": "filter meta-analyzed GWAS variants",
+    "extractLD": "extract and align 1000G reference dosages",
+    "buildLD": "compute cell-type LD covariance matrices",
+    "runTWAS": "run S-PrediXcan cell-type TWAS",
+    "summarizeTWAS": "summarize TWAS results with FDR and Bonferroni",
+}
+
+# Historical M0* step names keep working as aliases.
 STEP_ALIASES = {
-    "M06": "M04db",
-    "M04align": "M05align",
-    "M04metal": "M05metal",
-    "M04filter": "M05filter",
-    "M05ld": "M06ld",
-    "M05cov": "M06cov",
+    "M01": "inferExp",
+    "M02exp": "normExp",
+    "M02cov": "peerCov",
+    "M03": "trainModel",
+    "M04db": "buildDB",
+    "M06": "buildDB",
+    "M05align": "alignGWAS",
+    "M04align": "alignGWAS",
+    "M05metal": "metaGWAS",
+    "M04metal": "metaGWAS",
+    "M05filter": "filterGWAS",
+    "M04filter": "filterGWAS",
+    "M06ld": "extractLD",
+    "M05ld": "extractLD",
+    "M06cov": "buildLD",
+    "M05cov": "buildLD",
+    "M07": "runTWAS",
+    "M08": "summarizeTWAS",
 }
 
 SCRIPT_FILES = {
-    "M01": "M01_ENIGMA.R",
-    "M02exp": "M02_DataProcess_exp_fordb.R",
-    "M02cov": "M02_DataProcess_covariance_for_db.R",
-    "M03": "M03_ModelTraining.R",
-    "M04db": "M04_Makedb.R",
-    "M05align": "M05_DataProcess_GWAS_align4METAL.R",
-    "M05metal": "M05_DataProcess_GWAS_metal.sh",
-    "M05filter": "M05_DataProcess_GWAS_metal_filter.R",
-    "M06ld": "M06_LD.sh",
-    "M06cov": "M06_Makeld.sh",
-    "M07": "M07_TWAS.sh",
-    "M08": "M08_ResultStatistic.R",
+    "inferExp": "M01_ENIGMA.R",
+    "normExp": "M02_DataProcess_exp_fordb.R",
+    "peerCov": "M02_DataProcess_covariance_for_db.R",
+    "trainModel": "M03_ModelTraining.R",
+    "buildDB": "M04_Makedb.R",
+    "alignGWAS": "M05_DataProcess_GWAS_align4METAL.R",
+    "metaGWAS": "M05_DataProcess_GWAS_metal.sh",
+    "filterGWAS": "M05_DataProcess_GWAS_metal_filter.R",
+    "extractLD": "M06_LD.sh",
+    "buildLD": "M06_Makeld.sh",
+    "runTWAS": "M07_TWAS.sh",
+    "summarizeTWAS": "M08_ResultStatistic.R",
 }
 
-LINCS_STEPS = ["L01", "L02", "L03"]
+LINCS_STEPS = ["prepLincs", "enrichLincs", "scoreLincs"]
+LINCS_STEP_ALIASES = {
+    "L01": "prepLincs",
+    "L02": "enrichLincs",
+    "L03": "scoreLincs",
+}
 LINCS_SCRIPT_FILES = {
-    "L01": "L01_lincs_prepare.R",
-    "L02": "L02_lincs_enrichment.R",
-    "L03": "L03_lincs_drug_score.sh",
+    "prepLincs": "L01_lincs_prepare.R",
+    "enrichLincs": "L02_lincs_enrichment.R",
+    "scoreLincs": "L03_lincs_drug_score.sh",
 }
 
-GWAS_STEPS = {"M05align", "M05metal", "M05filter"}
+GWAS_STEPS = {"alignGWAS", "metaGWAS", "filterGWAS"}
 LEGACY_GWAS_PREFIX = "SLE_metal_096_917_183"
 LEGACY_GWAS_PROFILES = ("sle-legacy-pbmc", "sle-legacy-kidney")
 SAFE_NAME = r"[A-Za-z0-9][A-Za-z0-9_.\-]*"
@@ -114,32 +149,32 @@ def read_metadata(path):
         return None
 
 
-def parse_args():
+def parse_args(argv=None):
     p = argparse.ArgumentParser(
         description="MediCell pipeline driver (use `medicell.py lincs --help` for Part 2 LINCS drug prioritization)")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--alpha", type=float, default=0.1,
                    help="ENIGMA alpha (default 0.1)")
     p.add_argument("--tpm-min", type=float, default=0.1,
-                   help="M02exp gene filter: min inferred TPM (default 0.1)")
+                   help="normExp gene filter: min inferred TPM (default 0.1)")
     p.add_argument("--min-pct", type=float, default=0.01,
-                   help="M02exp gene filter: min sample fraction, 0-1 (default 0.01)")
+                   help="normExp gene filter: min sample fraction, 0-1 (default 0.01)")
     p.add_argument("--min-samples", type=int, default=5,
-                   help="M02exp gene filter: min sample count floor (default 5)")
+                   help="normExp gene filter: min sample count floor (default 5)")
     p.add_argument("--cat-covs", default="",
-                   help="M02cov: comma-separated categorical covariate columns to dummy-encode")
+                   help="peerCov: comma-separated categorical covariate columns to dummy-encode")
     p.add_argument("--min-level-count", type=int, default=5,
-                   help="M02cov: drop categorical levels with fewer samples (default 5)")
+                   help="peerCov: drop categorical levels with fewer samples (default 5)")
     p.add_argument("--peer-nk", type=int, default=None,
-                   help="PEER hidden factors; required explicitly for M02cov")
+                   help="PEER hidden factors; required explicitly for peerCov")
     p.add_argument("--peer-keep", type=int, default=None,
-                   help="PEER factors kept; required explicitly for M02cov")
+                   help="PEER factors kept; required explicitly for peerCov")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--all", action="store_true", help="run the full pipeline (default)")
     mode.add_argument("--steps", nargs="+", metavar="STEP",
                       help="run only these steps, separated by spaces or commas, "
                            "in pipeline order: " + ",".join(ALL_STEPS)
-                           + " (old names M06, M04*, M05ld, M05cov are aliases)")
+                           + " (old M01-M08 names remain valid aliases)")
     p.add_argument("--chromosomes", default=",".join(str(c) for c in range(1, 23)),
                    help="comma-separated chromosome list (default 1-22)")
     p.add_argument("--cell-types", required=True,
@@ -153,7 +188,7 @@ def parse_args():
     data.add_argument("--cibersortx-frax", default="",
                       help="CIBERSORTx adjusted cell-fraction output")
     data.add_argument("--covariates", default="",
-                      help="covariates txt (required by M02cov auto-detects "
+                      help="covariates txt (required by peerCov auto-detects "
                            "samples-x-covariates and legacy covariates-x-samples layouts; "
                            "see README)")
     data.add_argument("--snp-annot-pattern", default="",
@@ -166,7 +201,7 @@ def parse_args():
                       help="single-file genotype panel SNP annotation (used by the GWAS align step)")
     data.add_argument("--gwas-dir", default="",
                       help="directory holding the historical SLE GWAS files "
-                           "(used by M05align)")
+                           "(used by alignGWAS)")
     data.add_argument("--g1000-vcf-pattern", default="",
                       help="1000 Genomes Phase 3 VCF pattern with {chr} placeholder "
                            "(not needed when --ld-dosage-dir is given)")
@@ -176,9 +211,9 @@ def parse_args():
                       help="gene position annotation CSV (GRCh37, gene_id/gene_name columns)")
     data.add_argument("--ld-dosage-dir", default="",
                       help="pre-extracted 1000G dosage directory "
-                           "(skips the M06ld extraction block)")
+                           "(skips the extractLD extraction block)")
     data.add_argument("--gwas-summary", default="",
-                      help="explicit filtered GWAS summary for M07 "
+                      help="explicit filtered GWAS summary for runTWAS "
                            "(overrides the pipeline-generated path)")
 
     gen = p.add_argument_group("input contracts and generalization")
@@ -186,7 +221,7 @@ def parse_args():
                      help="sample ID matching between expression and covariate/genotype "
                           "files (default exact; legacy-rnames must be selected explicitly)")
     gen.add_argument("--cov-layout", choices=["auto", "samples", "covariates"], default="auto",
-                     help="M02cov covariates file layout (default auto)")
+                     help="peerCov covariates file layout (default auto)")
     gen.add_argument("--gene-annot-format", choices=["standard", "legacy-name-is-id"],
                      default=None,
                      help="gene annotation schema (default standard; legacy-name-is-id must be selected explicitly)")
@@ -197,16 +232,16 @@ def parse_args():
     gen.add_argument("--ld-panel-id", default="EUR_EAS",
                      help="LD panel id used in dosage/covariance file names (default EUR_EAS)")
     gen.add_argument("--twas-model-set", choices=["unfiltered", "filtered-signif"], default=None,
-                     help="weight database choice; required explicitly for M04db and M07")
+                     help="weight database choice; required explicitly for buildDB and runTWAS")
     gen.add_argument("--cores", type=int, default=None,
                      help="unified parallel cores/workers across all pipeline steps (default 4)")
     gen.add_argument("--seed", type=int, default=None,
-                     help="explicit M03 training seed; forces serial inner training "
+                     help="explicit trainModel training seed; forces serial inner training "
                           "(--training-cores 1)")
     gen.add_argument("--training-cores", type=int, default=None,
-                     help="inner M03 cores per (cell_type, chr) job (defaults from --cores; forced to 1 with --seed)")
+                     help="inner trainModel cores per (cell_type, chr) job (defaults from --cores; forced to 1 with --seed)")
 
-    gwas = p.add_argument_group("GWAS mode (required for M05align/M05metal/M05filter)")
+    gwas = p.add_argument_group("GWAS mode (required for alignGWAS/metaGWAS/filterGWAS)")
     gwas_mode = gwas.add_mutually_exclusive_group()
     gwas_mode.add_argument("--gwas-profile", choices=list(LEGACY_GWAS_PROFILES), default=None,
                            help="historical SLE reproduction profile; reproduces the "
@@ -233,11 +268,22 @@ def parse_args():
     env.add_argument("--gwas-id", default=None,
                      help="trait label used in standard-mode output names and reports "
                           "(the legacy profiles keep their historical output names)")
-    args = p.parse_args()
+    step_flags = p.add_argument_group("step shortcuts (alternative to --all / --steps; e.g. medicell.py --inferExp ...)")
+    for step in ALL_STEPS:
+        step_flags.add_argument("--" + step, dest="flag_" + step, action="store_true",
+                                help="run " + step + ": " + STEP_DESCRIPTIONS[step])
 
-    # -- steps: normalize aliases, validate, deduplicate, pipeline order --
+    args = p.parse_args(argv)
+
+    # -- steps: normalize shortcuts/aliases, validate, deduplicate, pipeline order --
+    flagged_steps = [step for step in ALL_STEPS if getattr(args, "flag_" + step)]
+    if flagged_steps and (args.all or args.steps is not None):
+        p.error("step shortcut flags (--" + ",--".join(flagged_steps) + ") cannot be combined with --all or --steps")
+
     args.step_aliases = []
-    if args.steps is None:
+    if flagged_steps:
+        args.steps = flagged_steps
+    elif args.steps is None:
         args.steps = ALL_STEPS.copy()
     else:
         selected = []
@@ -310,8 +356,8 @@ def parse_args():
     args.cell_types = cell_types
 
     peer_nk, peer_keep = args.peer_nk, args.peer_keep
-    if "M02cov" in args.steps and (peer_nk is None or peer_keep is None):
-        p.error("--peer-nk and --peer-keep are required for M02cov")
+    if "peerCov" in args.steps and (peer_nk is None or peer_keep is None):
+        p.error("--peer-nk and --peer-keep are required for peerCov")
     if peer_nk is not None and peer_nk < 0:
         p.error("--peer-nk must be non-negative")
     if peer_keep is not None and (peer_keep < 0 or (peer_nk is not None and peer_keep > peer_nk)):
@@ -319,19 +365,19 @@ def parse_args():
     args.peer_nk_resolved, args.peer_keep_resolved = peer_nk, peer_keep
     args.sample_id_policy = args.sample_id_policy or "exact"
     args.gene_annot_format = args.gene_annot_format or "standard"
-    if any(step in args.steps for step in ("M04db", "M07")) and not args.twas_model_set:
+    if any(step in args.steps for step in ("buildDB", "runTWAS")) and not args.twas_model_set:
         p.error("--twas-model-set (unfiltered or filtered-signif) is required for M04db and M07")
 
     # -- per-step required inputs --
     required_inputs = {
-        "M01": ("bulk_tpm", "enigma_ref", "cibersortx_frax"),
-        "M02cov": ("covariates",),
-        "M03": ("snp_annot_pattern", "genotype_pattern", "gene_annot"),
-        "M05align": (("snp_annot_file",) if args.gwas_manifest else
+        "inferExp": ("bulk_tpm", "enigma_ref", "cibersortx_frax"),
+        "peerCov": ("covariates",),
+        "trainModel": ("snp_annot_pattern", "genotype_pattern", "gene_annot"),
+        "alignGWAS": (("snp_annot_file",) if args.gwas_manifest else
                      ("snp_annot_file", "gwas_dir")),
-        "M06ld": (("snp_annot_pattern",) if args.ld_dosage_dir else
+        "extractLD": (("snp_annot_pattern",) if args.ld_dosage_dir else
                   ("snp_annot_pattern", "g1000_vcf_pattern", "g1000_samples")),
-        "M08": ("gene_pos",),
+        "summarizeTWAS": ("gene_pos",),
     }
     missing = sorted({"--" + name.replace("_", "-")
                       for step in args.steps for name in required_inputs.get(step, ())
@@ -341,13 +387,13 @@ def parse_args():
 
     # -- GWAS mode: explicit profile / manifest, or a recorded prior mode --
     if args.gwas_summary and set(args.steps) & GWAS_STEPS:
-        p.error("--gwas-summary is for running M07 on an external summary; it "
+        p.error("--gwas-summary is for running runTWAS on an external summary; it "
                 "cannot be combined with the GWAS steps")
     gwas_dir = os.path.join(os.path.abspath(args.output_dir), "M04_gwas")
     run_meta = os.path.join(gwas_dir, "gwas_run.json")
     profile, manifest = args.gwas_profile, args.gwas_manifest
     needs_mode = bool(set(args.steps) & GWAS_STEPS) or \
-        ("M07" in args.steps and not args.gwas_summary)
+        ("runTWAS" in args.steps and not args.gwas_summary)
     args.gwas_mode_recovered = False
     saved = None
     requested_profile, requested_manifest = profile, manifest
@@ -468,7 +514,10 @@ def parse_lincs_args(argv):
                    help="output directory (may reuse Part 1 output-dir containing M01/M08)")
     p.add_argument("--steps", nargs="+", metavar="STEP", default=None,
                    help="LINCS steps to run in order: " + ",".join(LINCS_STEPS)
-                        + " (default: all, or L01,L03 when --lincs-sig-csv is given)")
+                        + " (L01,L02,L03 aliases also work; default: all, or prepLincs,scoreLincs when --lincs-sig-csv is given)")
+    for lstep in LINCS_STEPS:
+        p.add_argument("--" + lstep, dest="flag_" + lstep, action="store_true",
+                       help="run LINCS step " + lstep)
     p.add_argument("--trait", default="",
                    help="trait label used in output tags (default: auto from M04 gwas_run.json or 'trait')")
     p.add_argument("--tissue", "--label", dest="tissue", default="cohort",
@@ -554,9 +603,14 @@ def parse_lincs_args(argv):
     if not re.fullmatch(SAFE_NAME, args.tissue):
         p.error("--tissue/--label must be a safe output label ([A-Za-z0-9_.-])")
 
-    if args.steps is None:
+    lincs_flagged = [s for s in LINCS_STEPS if getattr(args, "flag_" + s)]
+    if lincs_flagged and args.steps is not None:
+        p.error("step flags cannot be combined with --steps")
+    if lincs_flagged:
+        args.steps = lincs_flagged
+    elif args.steps is None:
         if args.lincs_sig_csv:
-            args.steps = ["L01", "L03"]
+            args.steps = ["prepLincs", "scoreLincs"]
         else:
             args.steps = LINCS_STEPS.copy()
     else:
@@ -566,11 +620,18 @@ def parse_lincs_args(argv):
                 if not part.strip():
                     p.error("--steps cannot contain empty values; choose from: " + ",".join(LINCS_STEPS))
                 selected.extend(part.split())
-        unknown = [s for s in selected if s not in LINCS_STEPS]
+        canonical = []
+        unknown = []
+        for s in selected:
+            c = LINCS_STEP_ALIASES.get(s, s)
+            if c not in LINCS_STEPS:
+                unknown.append(s)
+            elif c not in canonical:
+                canonical.append(c)
         if unknown:
             p.error("unknown LINCS steps: " + ",".join(sorted(set(unknown)))
                     + "; choose from: " + ",".join(LINCS_STEPS))
-        args.steps = [s for s in LINCS_STEPS if s in selected]
+        args.steps = [s for s in LINCS_STEPS if s in canonical]
 
     cell_types = []
     if args.cell_types:
@@ -657,13 +718,13 @@ def run_lincs_mode(argv):
         if os.path.isfile(default_m01):
             enigma_rdata = default_m01
 
-    if "L01" in args.steps:
+    if "prepLincs" in args.steps:
         if not twas_file:
             sys.exit("L01 requires --twas-file (or M08_summary/allcelltype_result.csv in --output-dir)")
         if not args.exp_matrix and not enigma_rdata:
             sys.exit("L01 requires --exp-matrix or --enigma-rdata (or M01_deconvolution RData in --output-dir)")
 
-    if "L02" in args.steps:
+    if "enrichLincs" in args.steps:
         if not os.path.isfile(args.lincs_gmt):
             sys.exit("L02 requires existing file for --lincs-gmt: {}".format(args.lincs_gmt))
         for flag, fpath in (("--lincs-pert-phase1", args.lincs_pert_phase1),
@@ -696,10 +757,10 @@ def run_lincs_mode(argv):
 
         l02_in_csv = abspath_opt(args.lincs_input_csv) if args.lincs_input_csv else l01_dir_csv
         l03_sig_csv = abspath_opt(args.lincs_sig_csv) if args.lincs_sig_csv else l02_sig_csv
-        l03_twas_tsv = l01_twas_tsv if ("L01" in args.steps or os.path.isfile(l01_twas_tsv)) else twas_file
-        l03_exp_csv = l01_exp_csv if ("L01" in args.steps or os.path.isfile(l01_exp_csv)) else abspath_opt(args.exp_matrix)
+        l03_twas_tsv = l01_twas_tsv if ("prepLincs" in args.steps or os.path.isfile(l01_twas_tsv)) else twas_file
+        l03_exp_csv = l01_exp_csv if ("prepLincs" in args.steps or os.path.isfile(l01_exp_csv)) else abspath_opt(args.exp_matrix)
 
-        if "L03" in args.steps and (not l03_twas_tsv or not l03_exp_csv):
+        if "scoreLincs" in args.steps and (not l03_twas_tsv or not l03_exp_csv):
             sys.exit("L03 requires L01 outputs or explicit --twas-file and --exp-matrix")
 
         env = os.environ.copy()
@@ -750,9 +811,9 @@ def run_lincs_mode(argv):
         })
         return env
 
-    if "L01" in args.steps:
+    if "prepLincs" in args.steps:
         for direction in directions:
-            conda_run(lincs_env, ["Rscript", lincs_script("L01")], make_env(direction, total_cores))
+            conda_run(lincs_env, ["Rscript", lincs_script("prepLincs")], make_env(direction, total_cores))
 
     def run_dir_step(step, cmd_runner, per_dir_cores):
         if dir_workers <= 1:
@@ -765,10 +826,10 @@ def run_lincs_mode(argv):
                 for fut in futs:
                     fut.result()
 
-    if "L02" in args.steps:
-        run_dir_step("L02", lambda s: ["Rscript", lincs_script(s)], l02_inner_cores)
-    if "L03" in args.steps:
-        run_dir_step("L03", lambda s: ["bash", lincs_script(s)], 1)
+    if "enrichLincs" in args.steps:
+        run_dir_step("enrichLincs", lambda s: ["Rscript", lincs_script(s)], l02_inner_cores)
+    if "scoreLincs" in args.steps:
+        run_dir_step("scoreLincs", lambda s: ["bash", lincs_script(s)], 1)
 
     print("MediCell LINCS run complete. Results in:", out)
 
@@ -780,7 +841,10 @@ def main():
     if "--lincs" in sys.argv[1:]:
         run_lincs_mode([a for a in sys.argv[1:] if a != "--lincs"])
         return
-    args = parse_args()
+    argv = sys.argv[1:]
+    if argv and (argv[0] in ALL_STEPS or argv[0] in STEP_ALIASES):
+        argv = ["--steps", argv[0]] + argv[1:]
+    args = parse_args(argv)
     env_base = os.path.abspath(args.env_base) if args.env_base else ""
     metal_default = os.path.join(REPO, "tools", "METAL", "metal")
     if env_base and args.metal_bin == metal_default:
@@ -935,19 +999,19 @@ def main():
         "MKL_NUM_THREADS": str(total_cores),
     }
 
-    if "M01" in steps:
-        conda_run(args.r_env, ["Rscript", script("M01")],
+    if "inferExp" in steps:
+        conda_run(args.r_env, ["Rscript", script("inferExp")],
                   mc(MC_OUT_DIR=dirs["m01"], **blas_multi))
 
-    if "M02exp" in steps:
-        conda_run(args.peer_env, ["Rscript", script("M02exp")],
+    if "normExp" in steps:
+        conda_run(args.peer_env, ["Rscript", script("normExp")],
                   mc(MC_ENIGMA_RDATA=enigma_rdata, MC_EXP_DIR=dirs["exp"], **blas_single))
 
-    if "M02cov" in steps:
-        conda_run(args.peer_env, ["Rscript", script("M02cov")],
+    if "peerCov" in steps:
+        conda_run(args.peer_env, ["Rscript", script("peerCov")],
                   mc(MC_EXP_DIR=dirs["exp"], MC_COV_DIR=dirs["cov"], **blas_single))
 
-    if "M03" in steps:
+    if "trainModel" in steps:
         m03_jobs = [(ct, chr_) for ct in cell_types for chr_ in chrs]
         if args.seed is not None:
             m03_inner = 1
@@ -960,7 +1024,7 @@ def main():
             m03_inner = max(1, total_cores // m03_workers)
 
         def run_m03_one(ct, chr_):
-            conda_run(args.r_env, ["Rscript", script("M03"), ct, str(chr_)],
+            conda_run(args.r_env, ["Rscript", script("trainModel"), ct, str(chr_)],
                       mc(MC_COV_FILE=os.path.join(dirs["cov"], ct + "_covariates.txt"),
                          MC_EXP_FILE=os.path.join(dirs["exp"], ct + "_transformed_expression.txt"),
                          MC_M03_OUT=dirs["m03"],
@@ -976,49 +1040,49 @@ def main():
                 for fut in futs:
                     fut.result()
 
-    if "M04db" in steps:
-        conda_run(args.r_env, ["Rscript", script("M04db")],
+    if "buildDB" in steps:
+        conda_run(args.r_env, ["Rscript", script("buildDB")],
                   mc(MC_M03_SUMMARY_DIR=os.path.join(dirs["m03"], "summary"),
                      MC_M03_WEIGHTS_DIR=os.path.join(dirs["m03"], "weights"),
                      MC_DB_DIR=dirs["db"],
                      MC_CHROMS=base["MC_CHROMS_CSV"],
                      **blas_single))
 
-    if "M05align" in steps:
-        conda_run(args.r_env, ["Rscript", script("M05align")], mc())
+    if "alignGWAS" in steps:
+        conda_run(args.r_env, ["Rscript", script("alignGWAS")], mc())
         record_gwas_mode()
 
-    if "M05metal" in steps:
-        conda_run(args.r_env, ["bash", script("M05metal")],
+    if "metaGWAS" in steps:
+        conda_run(args.r_env, ["bash", script("metaGWAS")],
                   mc(MC_GWAS_OUT=dirs["gwas"], MC_METAL_TBL=args.metal_tbl))
         record_gwas_mode()
 
-    if "M05filter" in steps:
-        conda_run(args.r_env, ["Rscript", script("M05filter")],
+    if "filterGWAS" in steps:
+        conda_run(args.r_env, ["Rscript", script("filterGWAS")],
                   mc(MC_METAL_TBL=args.metal_tbl,
                      MC_GWAS_OUT=dirs["gwas"],
                      MC_GWAS_FILT=args.gwas_filt))
         record_gwas_mode()
 
-    if "M06ld" in steps:
-        conda_run(args.py_env, ["bash", script("M06ld")],
+    if "extractLD" in steps:
+        conda_run(args.py_env, ["bash", script("extractLD")],
                   mc(MC_LD_DOSAGE_DIR=dirs["ld_dosage"],
                      MC_LD_COV_DIR=dirs["ld_cov"],
                      **blas_single))
 
-    if "M06cov" in steps:
-        conda_run(args.py_env, ["bash", script("M06cov")],
+    if "buildLD" in steps:
+        conda_run(args.py_env, ["bash", script("buildLD")],
                   mc(MC_DB_DIR=dirs["db"], MC_LD_COV_DIR=dirs["ld_cov"],
                      **blas_single))
 
-    if "M07" in steps:
-        conda_run(args.py_env, ["bash", script("M07")],
+    if "runTWAS" in steps:
+        conda_run(args.py_env, ["bash", script("runTWAS")],
                   mc(MC_DB_DIR=dirs["db"], MC_LD_COV_DIR=dirs["ld_cov"],
                      MC_GWAS_FILT=args.gwas_filt, MC_TWAS_OUT=dirs["twas"],
                      **blas_single))
 
-    if "M08" in steps:
-        conda_run(args.r_env, ["Rscript", script("M08")],
+    if "summarizeTWAS" in steps:
+        conda_run(args.r_env, ["Rscript", script("summarizeTWAS")],
                   mc(MC_TWAS_DIR=dirs["twas"], MC_SUMMARY_OUT=dirs["summary"],
                      MC_GWAS_ID=args.gwas_id, **blas_single))
 
