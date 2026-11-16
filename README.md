@@ -6,7 +6,9 @@ cell-type-dependent genetic effects. It deconvolves bulk RNA-seq into
 cell-type-resolved expression via CIBERSORTx + ENIGMA, trains
 cell-type-specific genetically regulated expression (GReX) models with
 elastic-net, and performs S-PrediXcan association against GWAS summary
-statistics.
+statistics. Part 2 (`medicell.py lincs`) integrates cell-type TWAS associations
+and expression profiles with LINCS L1000 perturbation signatures (`fgsea`) to
+prioritize candidate drugs per cell type.
 
 Analysis is configured by explicit cell types, PEER factors and model-selection
 parameters. No tissue name or tissue-specific presets are required.
@@ -346,6 +348,103 @@ The corrected standard path (`--gwas-manifest`) can legitimately produce
 different statistics for the same studies — that is expected, and the
 difference is the fix.
 
+## Part 2: LINCS drug prioritization (`medicell.py lincs`)
+
+Part 2 is invoked separately via `medicell.py lincs` (or `medicell.py --lincs`).
+It connects cell-type-resolved TWAS results and cell-type expression profiles
+with LINCS L1000 perturbation signatures (`fgsea`) to score candidate compounds
+for each cell type:
+
+1. **`L01` (`script/L01_lincs_prepare.R`)**: Splits TWAS summary statistics by
+   z-score sign (`pos`: `zscore > 0`, `neg`: `zscore < 0`) and builds a
+   gene-symbol x cell-type expression matrix (either from `--exp-matrix` or by
+   averaging M01 ENIGMA `enigma.cse.test` across samples per cell type).
+2. **`L02` (`script/L02_lincs_enrichment.R`)**: Runs `fgsea` on the ranked
+   directional TWAS genes against `data/lincs/LINCS_PRL_top250_human.gmt`,
+   annotates hits with L1000 Phase 1/2 perturbation metadata (`GSE92742` and
+   `GSE70138` in `data/lincs/`), and filters hits by significance and NES sign
+   (default `NES < 0`, `pval < 0.05`).
+3. **`L03` (`script/L03_lincs_drug_score.sh`)**: Selects the top perturbations
+   per run, extracts their leading-edge genes and per-cell-type TWAS z-scores,
+   computes cross-cell-type expression specificity (`expZscore`), and sums
+   `RankScore = |TWAS_zscore| * expZscore` over each drug's leading-edge genes
+   to produce a drug x cell-type prioritization matrix.
+
+Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
+`lincsTissueSpecific.R`, `formatLeadingSpecific.pl`, `formatZscoreSpecific.pl`,
+`getZscoreSpecificMatrix.R`). Runtime requires an R environment with `fgsea`,
+`dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs); `medicell.py`
+auto-detects `R4.4.3` or `r_4.6.1`, or accepts `--lincs-env <env>`.
+
+### Quick start
+
+```bash
+# 1) Continue from a Part 1 output directory (reuses M01 ENIGMA + M08 summary)
+python3 medicell.py lincs \
+    --output-dir run_out \
+    --gene-pos data/gene_pos_grch37.82.csv \
+    --label cohort --direction both
+
+# 2) Run standalone from an external TWAS table (CSV/TSV/XLSX) + expression matrix
+python3 medicell.py lincs \
+    --output-dir lincs_out \
+    --twas-file path/to/twas.xlsx --twas-sheet eGFR_pbmc_neg \
+    --exp-matrix path/to/exp_matrix.csv \
+    --trait eGFR --label pbmc --direction neg
+
+# 3) Run with custom TWAS column names and a custom GMT (skipping Broad pert_info)
+python3 medicell.py lincs \
+    --output-dir lincs_out \
+    --twas-file custom_twas.csv \
+    --twas-gene-col Symbol --twas-celltype-col CellType \
+    --twas-zscore-col Zscore --twas-padj-col FDR \
+    --exp-matrix custom_exp.csv \
+    --lincs-gmt custom.gmt \
+    --lincs-pert-phase1 "" --lincs-pert-phase2 "" \
+    --trait MyTrait --label MyCohort --direction pos
+
+# 4) Score directly from a pre-computed LINCS enrichment CSV (skip L02)
+python3 medicell.py lincs \
+    --output-dir lincs_out \
+    --twas-file path/to/twas.csv --exp-matrix path/to/exp_matrix.csv \
+    --lincs-sig-csv path/to/LINCS_sig.csv \
+    --trait MyTrait --label MyCohort --direction pos
+```
+
+### Key options (`python3 medicell.py lincs --help`)
+
+| Option | Default | Description |
+|---|---|---|
+| `--output-dir` | required | Output root (may reuse Part 1 `--output-dir` containing `M01`/`M08`). |
+| `--steps` | `L01,L02,L03` | Subset of steps to run (defaults to `L01,L03` when `--lincs-sig-csv` is set). |
+| `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |
+| `--label` / `--tissue` | `cohort` | Cohort/compartment label used in output file names (no tissue presets). |
+| `--direction` | `pos` | TWAS z-score direction: `pos` (`>0`), `neg` (`<0`), or `both`. |
+| `--cell-types` | all | Optional comma/space-separated subset of cell types to retain. |
+| `--twas-file` | `M08_summary/...` | TWAS summary table (`.csv`, `.tsv`, `.txt`, or `.xlsx` with `--twas-sheet`). |
+| `--twas-gene-col`, `--twas-zscore-col`, `--twas-padj-col`, `--twas-celltype-col` | auto-detect | Explicit column names if your TWAS table uses non-standard headers. |
+| `--exp-matrix` | from `M01` | Pre-built gene-symbol x cell-type CSV (rows = genes, columns = cell types). |
+| `--lincs-gmt` | `data/lincs/LINCS_PRL_top250_human.gmt` | Perturbation/gene-set GMT file (`--lincs-pert-phase1/2 ""` disables extra annotation). |
+| `--lincs-sig-col`, `--lincs-sig-cutoff`, `--lincs-nes-filter` | `pval`, `0.05`, `neg` | Significance filter (`pval` or `padj`) and NES direction (`neg`, `pos`, `all`). |
+| `--top-n`, `--lincs-rank-by`, `--exclude-pert-pattern` | `50`, `pval`, `^BRD-\|trt_sh\.css` | Top perturbations kept in `L03`; pass `--exclude-pert-pattern ""` to keep all. |
+
+### LINCS outputs
+
+```text
+<output-dir>/
+  L01_inputs/       {trait}_{label}_{dir}.csv          directional TWAS subset for fgsea
+                    {trait}_{label}_twas_all.tsv       normalized Gene/CellType/Zscore table
+                    {label}_exp_matrix.csv             gene x cell-type expression matrix
+  L02_enrichment/   LINCS_all_{trait}_{label}_{dir}.csv  all fgsea-tested perturbations
+                    LINCS_sig_{trait}_{label}_{dir}.csv  filtered LINCS hits
+  L03_drug_scores/  {label}_{trait}_{dir}.SpeciGenes.txt
+                    {label}_{trait}_{dir}.LeadingGenesPool.txt
+                    {label}_{trait}_{dir}.LeadingGenesDrugPairs.txt
+                    {label}_{trait}_{dir}.twas_zscore.txt
+                    {label}_{trait}_{dir}.drug_celltype_score.RData
+                    {label}_{trait}_{dir}.drug_celltype_score.csv   final drug x cell-type score matrix
+```
+
 ## References
 
 - ENIGMA: deconvolution of bulk RNA-seq with single-cell reference
@@ -353,3 +452,5 @@ difference is the fix.
 - METAL: https://github.com/statgen/Metal
 - PEER: https://github.com/PMBio/peer
 - 1000 Genomes Project Phase 3
+- LINCS L1000 (GSE92742, GSE70138): https://www.lincsproject.org/
+- fgsea: https://bioconductor.org/packages/fgsea/

@@ -73,6 +73,13 @@ SCRIPT_FILES = {
     "M08": "M08_ResultStatistic.R",
 }
 
+LINCS_STEPS = ["L01", "L02", "L03"]
+LINCS_SCRIPT_FILES = {
+    "L01": "L01_lincs_prepare.R",
+    "L02": "L02_lincs_enrichment.R",
+    "L03": "L03_lincs_drug_score.sh",
+}
+
 GWAS_STEPS = {"M05align", "M05metal", "M05filter"}
 LEGACY_GWAS_PREFIX = "SLE_metal_096_917_183"
 LEGACY_GWAS_PROFILES = ("sle-legacy-pbmc", "sle-legacy-kidney")
@@ -106,7 +113,8 @@ def read_metadata(path):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="MediCell pipeline driver")
+    p = argparse.ArgumentParser(
+        description="MediCell pipeline driver (use `medicell.py lincs --help` for Part 2 LINCS drug prioritization)")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--alpha", type=float, default=0.1,
                    help="ENIGMA alpha (default 0.1)")
@@ -425,7 +433,316 @@ def conda_exe():
     return "conda"
 
 
+def resolve_lincs_env(env_base, requested):
+    """Pick an R environment with fgsea installed unless explicitly provided."""
+    if requested:
+        return requested
+    roots = []
+    if env_base:
+        roots.append(env_base)
+    roots.append(os.path.join(os.path.dirname(conda_exe()), "..", "envs"))
+    roots.append(os.path.join(os.path.expanduser("~"), "miniforge3", "envs"))
+    for root in roots:
+        r443_fgsea = os.path.join(root, "R4.4.3", "lib", "R", "library", "fgsea")
+        if os.path.isdir(r443_fgsea):
+            return "R4.4.3"
+        r461_fgsea = os.path.join(root, "r_4.6.1", "lib", "R", "library", "fgsea")
+        if os.path.isdir(r461_fgsea):
+            return "r_4.6.1"
+    return "R4.4.3"
+
+
+def parse_lincs_args(argv):
+    p = argparse.ArgumentParser(
+        prog="medicell.py lincs",
+        description="MediCell Part 2: LINCS perturbation enrichment and cell-type drug scoring")
+    p.add_argument("--output-dir", required=True,
+                   help="output directory (may reuse Part 1 output-dir containing M01/M08)")
+    p.add_argument("--steps", nargs="+", metavar="STEP", default=None,
+                   help="LINCS steps to run in order: " + ",".join(LINCS_STEPS)
+                        + " (default: all, or L01,L03 when --lincs-sig-csv is given)")
+    p.add_argument("--trait", default="",
+                   help="trait label used in output tags (default: auto from M04 gwas_run.json or 'trait')")
+    p.add_argument("--tissue", "--label", dest="tissue", default="cohort",
+                   help="cohort/compartment label used in output names (default cohort)")
+    p.add_argument("--direction", choices=["pos", "neg", "both"], default="pos",
+                   help="TWAS z-score direction to test: pos (>0), neg (<0), or both (default pos)")
+    p.add_argument("--cell-types", default="",
+                   help="optional space/comma-separated cell types to retain")
+
+    twas = p.add_argument_group("TWAS and expression inputs")
+    twas.add_argument("--twas-file", default="",
+                      help="TWAS summary table (.csv/.tsv/.xlsx); defaults to M08_summary/allcelltype_result.csv")
+    twas.add_argument("--twas-sheet", default="",
+                      help="Excel sheet name when --twas-file is .xlsx")
+    twas.add_argument("--twas-gene-col", default="",
+                      help="explicit gene symbol column name in --twas-file")
+    twas.add_argument("--twas-zscore-col", default="",
+                      help="explicit z-score column name in --twas-file")
+    twas.add_argument("--twas-padj-col", default="",
+                      help="explicit adjusted p-value column name in --twas-file")
+    twas.add_argument("--twas-celltype-col", default="",
+                      help="explicit cell type column name in --twas-file")
+    twas.add_argument("--twas-padj-cutoff", type=float, default=0.05,
+                      help="TWAS adjusted p-value cutoff for fgsea gene selection (default 0.05)")
+    twas.add_argument("--twas-zscore-cutoff", type=float, default=0.25,
+                      help="minimum |z-score| cutoff for fgsea ranked genes (default 0.25)")
+    twas.add_argument("--exp-matrix", default="",
+                      help="pre-built gene x cell-type expression CSV (skips M01 aggregation)")
+    twas.add_argument("--enigma-rdata", default="",
+                      help="M01 ENIGMA RData path (default <output-dir>/M01_deconvolution/enigma.cse.trace_alpha_<alpha>.RData)")
+    twas.add_argument("--alpha", type=float, default=0.1,
+                      help="ENIGMA alpha used to locate default M01 RData (default 0.1)")
+    twas.add_argument("--gene-pos", default="",
+                      help="gene position CSV with gene_id,gene_name columns for mapping M01 rownames")
+
+    lincs = p.add_argument_group("LINCS enrichment and scoring")
+    lincs.add_argument("--lincs-gmt",
+                       default=os.path.join(REPO, "data", "lincs", "LINCS_PRL_top250_human.gmt"),
+                       help="LINCS/gene-set GMT file")
+    lincs.add_argument("--lincs-pert-phase1",
+                       default=os.path.join(REPO, "data", "lincs", "GSE92742_Broad_LINCS_pert_info.txt.gz"),
+                       help="optional Phase 1 perturbation annotation (.txt.gz; pass '' to disable)")
+    lincs.add_argument("--lincs-pert-phase2",
+                       default=os.path.join(REPO, "data", "lincs", "GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz"),
+                       help="optional Phase 2 perturbation annotation (.txt.gz; pass '' to disable)")
+    lincs.add_argument("--lincs-input-csv", default="",
+                       help="optional pre-split directional TWAS CSV for standalone L02")
+    lincs.add_argument("--lincs-sig-csv", default="",
+                       help="pre-computed LINCS enrichment CSV for L03 (skips L02 when --steps is omitted)")
+    lincs.add_argument("--lincs-min-size", type=int, default=10,
+                       help="fgsea minSize (default 10)")
+    lincs.add_argument("--lincs-max-size", type=int, default=500,
+                       help="fgsea maxSize (default 500)")
+    lincs.add_argument("--lincs-sig-col", choices=["pval", "padj"], default="pval",
+                       help="significance column used to filter LINCS hits (default pval)")
+    lincs.add_argument("--lincs-sig-cutoff", type=float, default=0.05,
+                       help="significance threshold for LINCS hits (default 0.05)")
+    lincs.add_argument("--lincs-nes-filter", choices=["neg", "pos", "all"], default="neg",
+                       help="NES direction filter for LINCS hits (default neg)")
+    lincs.add_argument("--lincs-cores", type=int, default=4,
+                       help="threads for fgsea (default 4)")
+    lincs.add_argument("--remove-ribo", action="store_true",
+                       help="exclude ribosomal and mitochondrial genes before fgsea")
+    lincs.add_argument("--top-n", type=int, default=50,
+                       help="top LINCS perturbations retained per run (default 50)")
+    lincs.add_argument("--lincs-rank-by", choices=["pval", "padj"], default="pval",
+                       help="column used by L03 to rank perturbations (default pval)")
+    lincs.add_argument("--exclude-pert-pattern", default=r"^BRD-|trt_sh\.css",
+                       help="regex applied to 'pert_iname pert_type' to exclude perturbations (pass '' to disable)")
+
+    env = p.add_argument_group("environment")
+    env.add_argument("--env-base", default="",
+                     help="portable environment root (unpacked conda-pack bundle)")
+    env.add_argument("--lincs-env", default="",
+                     help="conda env with fgsea/dplyr/tidyr/readxl (default: auto-detect)")
+
+    args = p.parse_args(argv)
+
+    if args.trait and not re.fullmatch(SAFE_NAME, args.trait):
+        p.error("--trait must be a safe output label ([A-Za-z0-9_.-])")
+    if not re.fullmatch(SAFE_NAME, args.tissue):
+        p.error("--tissue/--label must be a safe output label ([A-Za-z0-9_.-])")
+
+    if args.steps is None:
+        if args.lincs_sig_csv:
+            args.steps = ["L01", "L03"]
+        else:
+            args.steps = LINCS_STEPS.copy()
+    else:
+        selected = []
+        for value in args.steps:
+            for part in value.split(","):
+                if not part.strip():
+                    p.error("--steps cannot contain empty values; choose from: " + ",".join(LINCS_STEPS))
+                selected.extend(part.split())
+        unknown = [s for s in selected if s not in LINCS_STEPS]
+        if unknown:
+            p.error("unknown LINCS steps: " + ",".join(sorted(set(unknown)))
+                    + "; choose from: " + ",".join(LINCS_STEPS))
+        args.steps = [s for s in LINCS_STEPS if s in selected]
+
+    cell_types = []
+    if args.cell_types:
+        cell_types = args.cell_types.replace(",", " ").split()
+        if any(not re.fullmatch(SAFE_NAME, ct) for ct in cell_types):
+            p.error("cell type names must be safe output labels ([A-Za-z0-9_.-])")
+        if len(set(cell_types)) != len(cell_types):
+            p.error("--cell-types contains duplicates")
+    args.cell_types = cell_types
+
+    if args.top_n < 1:
+        p.error("--top-n must be >= 1")
+    if args.lincs_min_size < 1 or args.lincs_max_size < args.lincs_min_size:
+        p.error("--lincs-min-size and --lincs-max-size must satisfy 1 <= min <= max")
+    if args.lincs_cores < 1:
+        p.error("--lincs-cores must be >= 1")
+    if not (0 < args.twas_padj_cutoff <= 1) or not (0 < args.lincs_sig_cutoff <= 1):
+        p.error("p-value cutoffs must be in (0, 1]")
+    if args.twas_zscore_cutoff < 0 or not math.isfinite(args.twas_zscore_cutoff):
+        p.error("--twas-zscore-cutoff must be finite and >= 0")
+
+    return args
+
+
+def run_lincs_mode(argv):
+    args = parse_lincs_args(argv)
+    env_base = os.path.abspath(args.env_base) if args.env_base else ""
+    lincs_env = resolve_lincs_env(env_base, args.lincs_env)
+
+    def conda_run(env_name, cmd, env):
+        if env_base:
+            env = env.copy()
+            bindir = os.path.join(env_base, env_name, "bin")
+            env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
+            print("[run]", env_name, " ".join(cmd))
+            subprocess.run(cmd, env=env, check=True)
+        else:
+            full = [conda_exe(), "run", "-n", env_name, "--no-capture-output"] + cmd
+            print("[run]", " ".join(full))
+            subprocess.run(full, env=env, check=True)
+
+    out = os.path.abspath(args.output_dir)
+    dirs = {
+        "l01": os.path.join(out, "L01_inputs"),
+        "l02": os.path.join(out, "L02_enrichment"),
+        "l03": os.path.join(out, "L03_drug_scores"),
+    }
+    for d in dirs.values():
+        os.makedirs(d, exist_ok=True)
+
+    def abspath_opt(val):
+        return os.path.abspath(val) if val else ""
+
+    trait = args.trait
+    if not trait:
+        gwas_meta = read_metadata(os.path.join(out, "M04_gwas", "gwas_run.json"))
+        if isinstance(gwas_meta, dict) and isinstance(gwas_meta.get("gwas_id"), str) and gwas_meta["gwas_id"]:
+            trait = gwas_meta["gwas_id"]
+        else:
+            trait = "trait"
+
+    twas_file = abspath_opt(args.twas_file)
+    if not twas_file:
+        m08_all = os.path.join(out, "M08_summary", "allcelltype_result.csv")
+        m08_fdr = os.path.join(out, "M08_summary", "FDRsig_allcelltype_result.csv")
+        if os.path.isfile(m08_all):
+            twas_file = m08_all
+        elif os.path.isfile(m08_fdr):
+            twas_file = m08_fdr
+
+    enigma_rdata = abspath_opt(args.enigma_rdata)
+    if not enigma_rdata and not args.exp_matrix:
+        default_m01 = os.path.join(out, "M01_deconvolution",
+                                   "enigma.cse.trace_alpha_{}.RData".format(args.alpha))
+        if os.path.isfile(default_m01):
+            enigma_rdata = default_m01
+
+    if "L01" in args.steps:
+        if not twas_file:
+            sys.exit("L01 requires --twas-file (or M08_summary/allcelltype_result.csv in --output-dir)")
+        if not args.exp_matrix and not enigma_rdata:
+            sys.exit("L01 requires --exp-matrix or --enigma-rdata (or M01_deconvolution RData in --output-dir)")
+
+    if "L02" in args.steps:
+        if not os.path.isfile(args.lincs_gmt):
+            sys.exit("L02 requires existing file for --lincs-gmt: {}".format(args.lincs_gmt))
+        for flag, fpath in (("--lincs-pert-phase1", args.lincs_pert_phase1),
+                            ("--lincs-pert-phase2", args.lincs_pert_phase2)):
+            if fpath and not os.path.isfile(fpath):
+                sys.exit("L02 annotation file not found for {}: {}".format(flag, fpath))
+
+    directions = ["pos", "neg"] if args.direction == "both" else [args.direction]
+    if args.direction == "both" and (args.lincs_sig_csv or args.lincs_input_csv):
+        sys.exit("--lincs-sig-csv / --lincs-input-csv cannot be combined with --direction both")
+
+    def lincs_script(step):
+        return os.path.join(SCRIPTS, LINCS_SCRIPT_FILES[step])
+
+    print("[lincs steps]", " -> ".join(args.steps))
+    print("[lincs trait/label]", trait, "/", args.tissue, "directions:", ",".join(directions))
+    print("[lincs env]", lincs_env)
+
+    for direction in directions:
+        twas_tag = "{}_{}_{}".format(trait, args.tissue, direction)
+        l01_dir_csv = os.path.join(dirs["l01"], "{}.csv".format(twas_tag))
+        l01_twas_tsv = os.path.join(dirs["l01"], "{}_{}_twas_all.tsv".format(trait, args.tissue))
+        l01_exp_csv = os.path.join(dirs["l01"], "{}_exp_matrix.csv".format(args.tissue))
+        l02_sig_csv = os.path.join(dirs["l02"], "LINCS_sig_{}.csv".format(twas_tag))
+
+        l02_in_csv = abspath_opt(args.lincs_input_csv) if args.lincs_input_csv else l01_dir_csv
+        l03_sig_csv = abspath_opt(args.lincs_sig_csv) if args.lincs_sig_csv else l02_sig_csv
+        l03_twas_tsv = l01_twas_tsv if ("L01" in args.steps or os.path.isfile(l01_twas_tsv)) else twas_file
+        l03_exp_csv = l01_exp_csv if ("L01" in args.steps or os.path.isfile(l01_exp_csv)) else abspath_opt(args.exp_matrix)
+
+        if "L03" in args.steps:
+            if not l03_twas_tsv or not l03_exp_csv:
+                sys.exit("L03 requires L01 outputs or explicit --twas-file and --exp-matrix")
+
+        base = {
+            "MC_LINCS_L01_DIR": dirs["l01"],
+            "MC_LINCS_L02_DIR": dirs["l02"],
+            "MC_LINCS_L03_DIR": dirs["l03"],
+            "MC_LINCS_TRAIT": trait,
+            "MC_LINCS_LABEL": args.tissue,
+            "MC_LINCS_DIRECTION": direction,
+            "MC_LINCS_TWAS_LABEL": twas_tag,
+            "MC_CELLTYPES": " ".join(args.cell_types),
+            "MC_LINCS_TWAS_FILE": twas_file,
+            "MC_LINCS_TWAS_SHEET": args.twas_sheet,
+            "MC_LINCS_GENE_COL": args.twas_gene_col,
+            "MC_LINCS_Z_COL": args.twas_zscore_col,
+            "MC_LINCS_PADJ_COL": args.twas_padj_col,
+            "MC_LINCS_CT_COL": args.twas_celltype_col,
+            "MC_LINCS_L03_GENE_COL": "" if l03_twas_tsv == l01_twas_tsv else args.twas_gene_col,
+            "MC_LINCS_L03_CT_COL": "" if l03_twas_tsv == l01_twas_tsv else args.twas_celltype_col,
+            "MC_LINCS_L03_Z_COL": "" if l03_twas_tsv == l01_twas_tsv else args.twas_zscore_col,
+            "MC_LINCS_TWAS_PADJ_CUTOFF": str(args.twas_padj_cutoff),
+            "MC_LINCS_ZSCORE_CUTOFF": str(args.twas_zscore_cutoff),
+            "MC_LINCS_EXP_MATRIX": abspath_opt(args.exp_matrix),
+            "MC_ENIGMA_RDATA": enigma_rdata,
+            "MC_GENE_POS": abspath_opt(args.gene_pos),
+            "MC_LINCS_DIR_CSV": l02_in_csv,
+            "MC_LINCS_GMT": abspath_opt(args.lincs_gmt),
+            "MC_LINCS_PERT_PHASE1": abspath_opt(args.lincs_pert_phase1),
+            "MC_LINCS_PERT_PHASE2": abspath_opt(args.lincs_pert_phase2),
+            "MC_LINCS_MIN_SIZE": str(args.lincs_min_size),
+            "MC_LINCS_MAX_SIZE": str(args.lincs_max_size),
+            "MC_LINCS_SIG_COL": args.lincs_sig_col,
+            "MC_LINCS_SIG_CUTOFF": str(args.lincs_sig_cutoff),
+            "MC_LINCS_NES_FILTER": args.lincs_nes_filter,
+            "MC_LINCS_CORES": str(args.lincs_cores),
+            "MC_LINCS_REMOVE_RIBO": "1" if args.remove_ribo else "0",
+            "MC_LINCS_SIG_CSV": l03_sig_csv,
+            "MC_LINCS_TWAS_TSV": l03_twas_tsv,
+            "MC_LINCS_EXP_CSV": l03_exp_csv,
+            "MC_LINCS_TOP_N": str(args.top_n),
+            "MC_LINCS_RANK_BY": args.lincs_rank_by,
+            "MC_LINCS_EXCLUDE_PATTERN": args.exclude_pert_pattern if args.exclude_pert_pattern else "NONE",
+        }
+
+        def mc_env():
+            env = os.environ.copy()
+            env.update(base)
+            return env
+
+        if "L01" in args.steps:
+            conda_run(lincs_env, ["Rscript", lincs_script("L01")], mc_env())
+        if "L02" in args.steps:
+            conda_run(lincs_env, ["Rscript", lincs_script("L02")], mc_env())
+        if "L03" in args.steps:
+            conda_run(lincs_env, ["bash", lincs_script("L03")], mc_env())
+
+    print("MediCell LINCS run complete. Results in:", out)
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "lincs":
+        run_lincs_mode(sys.argv[2:])
+        return
+    if "--lincs" in sys.argv[1:]:
+        run_lincs_mode([a for a in sys.argv[1:] if a != "--lincs"])
+        return
     args = parse_args()
     env_base = os.path.abspath(args.env_base) if args.env_base else ""
     metal_default = os.path.join(REPO, "tools", "METAL", "metal")

@@ -6,3 +6,4 @@ run_out/
 tools/
 test/attempts/
 test/*.log
+data/lincs/*.gmt
