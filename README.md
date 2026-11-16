@@ -48,6 +48,7 @@ bash setup.sh --enigma-src /path/to/ENIGMA
 
 ```bash
 python3 medicell.py --output-dir run_out --all \
+    --cores 4 \
     --cell-types B,CD4T,CD8T,NK,Mono,DC \
     --peer-nk 2 --peer-keep 2 \
     --training-population EUR --twas-model-set unfiltered \
@@ -416,6 +417,7 @@ python3 medicell.py lincs \
 | Option | Default | Description |
 |---|---|---|
 | `--output-dir` | required | Output root (may reuse Part 1 `--output-dir` containing `M01`/`M08`). |
+| `--cores` | `4` | Unified parallel worker/core budget across all steps (`--training-cores` / `--lincs-cores` still work as overrides). |
 | `--steps` | `L01,L02,L03` | Subset of steps to run (defaults to `L01,L03` when `--lincs-sig-csv` is set). |
 | `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |
 | `--label` / `--tissue` | `cohort` | Cohort/compartment label used in output file names (no tissue presets). |

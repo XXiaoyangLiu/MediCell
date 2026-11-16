@@ -40,7 +40,9 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 import tempfile
+import threading
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.join(REPO, "script")
@@ -196,11 +198,13 @@ def parse_args():
                      help="LD panel id used in dosage/covariance file names (default EUR_EAS)")
     gen.add_argument("--twas-model-set", choices=["unfiltered", "filtered-signif"], default=None,
                      help="weight database choice; required explicitly for M04db and M07")
+    gen.add_argument("--cores", type=int, default=None,
+                     help="unified parallel cores/workers across all pipeline steps (default 4)")
     gen.add_argument("--seed", type=int, default=None,
-                     help="explicit M03 training seed; forces serial training "
+                     help="explicit M03 training seed; forces serial inner training "
                           "(--training-cores 1)")
     gen.add_argument("--training-cores", type=int, default=None,
-                     help="cores for M03 training (default 4; forced to 1 with --seed)")
+                     help="inner M03 cores per (cell_type, chr) job (defaults from --cores; forced to 1 with --seed)")
 
     gwas = p.add_argument_group("GWAS mode (required for M05align/M05metal/M05filter)")
     gwas_mode = gwas.add_mutually_exclusive_group()
@@ -272,10 +276,14 @@ def parse_args():
         p.error("--min-level-count must be non-negative")
     if args.seed is not None and not 0 <= args.seed <= 2147483647:
         p.error("--seed must be an integer in 0..2147483647")
+    if args.cores is not None and args.cores < 1:
+        p.error("--cores must be >= 1")
     if args.training_cores is not None and args.training_cores < 1:
         p.error("--training-cores must be >= 1")
     if args.seed is not None and args.training_cores not in (None, 1):
-        p.error("--seed requires serial training; set --training-cores 1 or omit it")
+        p.error("--seed requires serial inner training; set --training-cores 1 or omit it")
+    args.cores_resolved = (args.cores if args.cores is not None
+                           else (args.training_cores if args.training_cores is not None else 4))
     chrs = []
     for token in args.chromosomes.split(","):
         token = token.strip()
@@ -520,8 +528,10 @@ def parse_lincs_args(argv):
                        help="significance threshold for LINCS hits (default 0.05)")
     lincs.add_argument("--lincs-nes-filter", choices=["neg", "pos", "all"], default="neg",
                        help="NES direction filter for LINCS hits (default neg)")
-    lincs.add_argument("--lincs-cores", type=int, default=4,
-                       help="threads for fgsea (default 4)")
+    lincs.add_argument("--cores", type=int, default=None,
+                       help="unified parallel cores/workers across LINCS steps (default 4)")
+    lincs.add_argument("--lincs-cores", type=int, default=None,
+                       help="alias/override for fgsea threads (defaults to --cores)")
     lincs.add_argument("--remove-ribo", action="store_true",
                        help="exclude ribosomal and mitochondrial genes before fgsea")
     lincs.add_argument("--top-n", type=int, default=50,
@@ -575,8 +585,14 @@ def parse_lincs_args(argv):
         p.error("--top-n must be >= 1")
     if args.lincs_min_size < 1 or args.lincs_max_size < args.lincs_min_size:
         p.error("--lincs-min-size and --lincs-max-size must satisfy 1 <= min <= max")
-    if args.lincs_cores < 1:
+    if args.cores is not None and args.cores < 1:
+        p.error("--cores must be >= 1")
+    if args.lincs_cores is not None and args.lincs_cores < 1:
         p.error("--lincs-cores must be >= 1")
+    args.cores_resolved = (args.cores if args.cores is not None
+                           else (args.lincs_cores if args.lincs_cores is not None else 4))
+    args.lincs_cores_resolved = (args.lincs_cores if args.lincs_cores is not None
+                                 else args.cores_resolved)
     if not (0 < args.twas_padj_cutoff <= 1) or not (0 < args.lincs_sig_cutoff <= 1):
         p.error("p-value cutoffs must be in (0, 1]")
     if args.twas_zscore_cutoff < 0 or not math.isfinite(args.twas_zscore_cutoff):
@@ -589,17 +605,20 @@ def run_lincs_mode(argv):
     args = parse_lincs_args(argv)
     env_base = os.path.abspath(args.env_base) if args.env_base else ""
     lincs_env = resolve_lincs_env(env_base, args.lincs_env)
+    print_lock = threading.Lock()
 
     def conda_run(env_name, cmd, env):
         if env_base:
             env = env.copy()
             bindir = os.path.join(env_base, env_name, "bin")
             env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
-            print("[run]", env_name, " ".join(cmd))
+            with print_lock:
+                print("[run]", env_name, " ".join(cmd), flush=True)
             subprocess.run(cmd, env=env, check=True)
         else:
             full = [conda_exe(), "run", "-n", env_name, "--no-capture-output"] + cmd
-            print("[run]", " ".join(full))
+            with print_lock:
+                print("[run]", " ".join(full), flush=True)
             subprocess.run(full, env=env, check=True)
 
     out = os.path.abspath(args.output_dir)
@@ -659,11 +678,16 @@ def run_lincs_mode(argv):
     def lincs_script(step):
         return os.path.join(SCRIPTS, LINCS_SCRIPT_FILES[step])
 
+    total_cores = args.cores_resolved
+    lincs_cores = args.lincs_cores_resolved
+    dir_workers = min(len(directions), total_cores)
+    l02_inner_cores = max(1, lincs_cores // dir_workers)
+
     print("[lincs steps]", " -> ".join(args.steps))
-    print("[lincs trait/label]", trait, "/", args.tissue, "directions:", ",".join(directions))
+    print("[lincs trait/label]", trait, "/", args.tissue, "directions:", ",".join(directions), "cores:", total_cores)
     print("[lincs env]", lincs_env)
 
-    for direction in directions:
+    def make_env(direction, step_cores):
         twas_tag = "{}_{}_{}".format(trait, args.tissue, direction)
         l01_dir_csv = os.path.join(dirs["l01"], "{}.csv".format(twas_tag))
         l01_twas_tsv = os.path.join(dirs["l01"], "{}_{}_twas_all.tsv".format(trait, args.tissue))
@@ -675,11 +699,12 @@ def run_lincs_mode(argv):
         l03_twas_tsv = l01_twas_tsv if ("L01" in args.steps or os.path.isfile(l01_twas_tsv)) else twas_file
         l03_exp_csv = l01_exp_csv if ("L01" in args.steps or os.path.isfile(l01_exp_csv)) else abspath_opt(args.exp_matrix)
 
-        if "L03" in args.steps:
-            if not l03_twas_tsv or not l03_exp_csv:
-                sys.exit("L03 requires L01 outputs or explicit --twas-file and --exp-matrix")
+        if "L03" in args.steps and (not l03_twas_tsv or not l03_exp_csv):
+            sys.exit("L03 requires L01 outputs or explicit --twas-file and --exp-matrix")
 
-        base = {
+        env = os.environ.copy()
+        env.update({
+            "MC_CORES": str(step_cores),
             "MC_LINCS_L01_DIR": dirs["l01"],
             "MC_LINCS_L02_DIR": dirs["l02"],
             "MC_LINCS_L03_DIR": dirs["l03"],
@@ -711,7 +736,7 @@ def run_lincs_mode(argv):
             "MC_LINCS_SIG_COL": args.lincs_sig_col,
             "MC_LINCS_SIG_CUTOFF": str(args.lincs_sig_cutoff),
             "MC_LINCS_NES_FILTER": args.lincs_nes_filter,
-            "MC_LINCS_CORES": str(args.lincs_cores),
+            "MC_LINCS_CORES": str(step_cores),
             "MC_LINCS_REMOVE_RIBO": "1" if args.remove_ribo else "0",
             "MC_LINCS_SIG_CSV": l03_sig_csv,
             "MC_LINCS_TWAS_TSV": l03_twas_tsv,
@@ -719,19 +744,31 @@ def run_lincs_mode(argv):
             "MC_LINCS_TOP_N": str(args.top_n),
             "MC_LINCS_RANK_BY": args.lincs_rank_by,
             "MC_LINCS_EXCLUDE_PATTERN": args.exclude_pert_pattern if args.exclude_pert_pattern else "NONE",
-        }
+            "OMP_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+        })
+        return env
 
-        def mc_env():
-            env = os.environ.copy()
-            env.update(base)
-            return env
+    if "L01" in args.steps:
+        for direction in directions:
+            conda_run(lincs_env, ["Rscript", lincs_script("L01")], make_env(direction, total_cores))
 
-        if "L01" in args.steps:
-            conda_run(lincs_env, ["Rscript", lincs_script("L01")], mc_env())
-        if "L02" in args.steps:
-            conda_run(lincs_env, ["Rscript", lincs_script("L02")], mc_env())
-        if "L03" in args.steps:
-            conda_run(lincs_env, ["bash", lincs_script("L03")], mc_env())
+    def run_dir_step(step, cmd_runner, per_dir_cores):
+        if dir_workers <= 1:
+            for direction in directions:
+                conda_run(lincs_env, cmd_runner(step), make_env(direction, per_dir_cores))
+        else:
+            with ThreadPoolExecutor(max_workers=dir_workers) as pool:
+                futs = [pool.submit(conda_run, lincs_env, cmd_runner(step), make_env(d, per_dir_cores))
+                        for d in directions]
+                for fut in futs:
+                    fut.result()
+
+    if "L02" in args.steps:
+        run_dir_step("L02", lambda s: ["Rscript", lincs_script(s)], l02_inner_cores)
+    if "L03" in args.steps:
+        run_dir_step("L03", lambda s: ["bash", lincs_script(s)], 1)
 
     print("MediCell LINCS run complete. Results in:", out)
 
@@ -749,17 +786,21 @@ def main():
     if env_base and args.metal_bin == metal_default:
         args.metal_bin = os.path.join(env_base, "r3.6.3", "bin", "metal")
 
+    print_lock = threading.Lock()
+
     def conda_run(env_name, cmd, env):
         if env_base:
             # portable mode: run binaries directly, env bin first on PATH
             env = env.copy()
             bindir = os.path.join(env_base, env_name, "bin")
             env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
-            print("[run]", env_name, " ".join(cmd))
+            with print_lock:
+                print("[run]", env_name, " ".join(cmd), flush=True)
             subprocess.run(cmd, env=env, check=True)
         else:
             full = [conda_exe(), "run", "-n", env_name, "--no-capture-output"] + cmd
-            print("[run]", " ".join(full))
+            with print_lock:
+                print("[run]", " ".join(full), flush=True)
             subprocess.run(full, env=env, check=True)
 
     out = os.path.abspath(args.output_dir)
@@ -858,9 +899,10 @@ def main():
         "MC_TRAIN_POPULATION": args.training_population,
         "MC_LD_PANEL_ID": args.ld_panel_id,
         "MC_TWAS_MODEL_SET": args.twas_model_set or "",
+        "MC_CORES": str(args.cores_resolved),
         "MC_SEED": "" if args.seed is None else str(args.seed),
-        "MC_TRAINING_CORES": str(args.training_cores
-                                 or (1 if args.seed is not None else 4)),
+        "MC_TRAINING_CORES": str(1 if args.seed is not None
+                                 else (args.training_cores or args.cores_resolved)),
         "MC_METAXCAN_DIR": os.path.abspath(args.metaxcan_dir),
         "MC_METAL_BIN": os.path.abspath(args.metal_bin),
         "MC_BCFTOOLS": args.bcftools,
@@ -881,31 +923,66 @@ def main():
     def script(step):
         return os.path.join(SCRIPTS, SCRIPT_FILES[step])
 
+    total_cores = args.cores_resolved
+    blas_single = {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+    }
+    blas_multi = {
+        "OMP_NUM_THREADS": str(total_cores),
+        "OPENBLAS_NUM_THREADS": str(total_cores),
+        "MKL_NUM_THREADS": str(total_cores),
+    }
+
     if "M01" in steps:
-        conda_run(args.r_env, ["Rscript", script("M01")], mc(MC_OUT_DIR=dirs["m01"]))
+        conda_run(args.r_env, ["Rscript", script("M01")],
+                  mc(MC_OUT_DIR=dirs["m01"], **blas_multi))
 
     if "M02exp" in steps:
         conda_run(args.peer_env, ["Rscript", script("M02exp")],
-                  mc(MC_ENIGMA_RDATA=enigma_rdata, MC_EXP_DIR=dirs["exp"]))
+                  mc(MC_ENIGMA_RDATA=enigma_rdata, MC_EXP_DIR=dirs["exp"], **blas_single))
 
     if "M02cov" in steps:
         conda_run(args.peer_env, ["Rscript", script("M02cov")],
-                  mc(MC_EXP_DIR=dirs["exp"], MC_COV_DIR=dirs["cov"]))
+                  mc(MC_EXP_DIR=dirs["exp"], MC_COV_DIR=dirs["cov"], **blas_single))
 
     if "M03" in steps:
-        for ct in cell_types:
-            for chr_ in chrs:
-                conda_run(args.r_env, ["Rscript", script("M03"), ct, str(chr_)],
-                          mc(MC_COV_FILE=os.path.join(dirs["cov"], ct + "_covariates.txt"),
-                             MC_EXP_FILE=os.path.join(dirs["exp"], ct + "_transformed_expression.txt"),
-                             MC_M03_OUT=dirs["m03"]))
+        m03_jobs = [(ct, chr_) for ct in cell_types for chr_ in chrs]
+        if args.seed is not None:
+            m03_inner = 1
+            m03_workers = min(len(m03_jobs), total_cores)
+        elif args.training_cores is not None:
+            m03_inner = args.training_cores
+            m03_workers = max(1, min(len(m03_jobs), total_cores // m03_inner))
+        else:
+            m03_workers = min(len(m03_jobs), total_cores)
+            m03_inner = max(1, total_cores // m03_workers)
+
+        def run_m03_one(ct, chr_):
+            conda_run(args.r_env, ["Rscript", script("M03"), ct, str(chr_)],
+                      mc(MC_COV_FILE=os.path.join(dirs["cov"], ct + "_covariates.txt"),
+                         MC_EXP_FILE=os.path.join(dirs["exp"], ct + "_transformed_expression.txt"),
+                         MC_M03_OUT=dirs["m03"],
+                         MC_TRAINING_CORES=str(m03_inner),
+                         **blas_single))
+
+        if m03_workers <= 1:
+            for ct, chr_ in m03_jobs:
+                run_m03_one(ct, chr_)
+        else:
+            with ThreadPoolExecutor(max_workers=m03_workers) as pool:
+                futs = [pool.submit(run_m03_one, ct, chr_) for ct, chr_ in m03_jobs]
+                for fut in futs:
+                    fut.result()
 
     if "M04db" in steps:
         conda_run(args.r_env, ["Rscript", script("M04db")],
                   mc(MC_M03_SUMMARY_DIR=os.path.join(dirs["m03"], "summary"),
                      MC_M03_WEIGHTS_DIR=os.path.join(dirs["m03"], "weights"),
                      MC_DB_DIR=dirs["db"],
-                     MC_CHROMS=base["MC_CHROMS_CSV"]))
+                     MC_CHROMS=base["MC_CHROMS_CSV"],
+                     **blas_single))
 
     if "M05align" in steps:
         conda_run(args.r_env, ["Rscript", script("M05align")], mc())
@@ -926,21 +1003,24 @@ def main():
     if "M06ld" in steps:
         conda_run(args.py_env, ["bash", script("M06ld")],
                   mc(MC_LD_DOSAGE_DIR=dirs["ld_dosage"],
-                     MC_LD_COV_DIR=dirs["ld_cov"]))
+                     MC_LD_COV_DIR=dirs["ld_cov"],
+                     **blas_single))
 
     if "M06cov" in steps:
         conda_run(args.py_env, ["bash", script("M06cov")],
-                  mc(MC_DB_DIR=dirs["db"], MC_LD_COV_DIR=dirs["ld_cov"]))
+                  mc(MC_DB_DIR=dirs["db"], MC_LD_COV_DIR=dirs["ld_cov"],
+                     **blas_single))
 
     if "M07" in steps:
         conda_run(args.py_env, ["bash", script("M07")],
                   mc(MC_DB_DIR=dirs["db"], MC_LD_COV_DIR=dirs["ld_cov"],
-                     MC_GWAS_FILT=args.gwas_filt, MC_TWAS_OUT=dirs["twas"]))
+                     MC_GWAS_FILT=args.gwas_filt, MC_TWAS_OUT=dirs["twas"],
+                     **blas_single))
 
     if "M08" in steps:
         conda_run(args.r_env, ["Rscript", script("M08")],
                   mc(MC_TWAS_DIR=dirs["twas"], MC_SUMMARY_OUT=dirs["summary"],
-                     MC_GWAS_ID=args.gwas_id))
+                     MC_GWAS_ID=args.gwas_id, **blas_single))
 
     print("MediCell run complete. Results in:", out)
 

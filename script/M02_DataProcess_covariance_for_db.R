@@ -107,7 +107,8 @@ run_celltype <- function(ctname) {
   write.table(as.data.frame(out), file, sep = "\t", row.names = TRUE)
   file
 }
-results <- mclapply(celltypes, function(ct) try(run_celltype(ct), silent = TRUE), mc.cores = 6)
+cores <- mc_number("MC_CORES", "4", lower = 1, integer = TRUE)
+results <- mclapply(celltypes, function(ct) try(run_celltype(ct), silent = TRUE), mc.cores = min(cores, length(celltypes)))
 failed <- vapply(results, inherits, logical(1), "try-error")
 if (any(failed)) stop("M02cov failed for ", paste(celltypes[failed], collapse = ", "), ": ",
                       paste(unlist(results[failed]), collapse = "\n"))

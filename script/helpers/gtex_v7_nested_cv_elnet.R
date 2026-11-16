@@ -189,7 +189,9 @@ main <- function(snp_annot_file, gene_annot_file, genotype_file, expression_file
       stop("CV folds must be integers >= 3")
   if (length(seed) != 1 || (!is.na(seed) && (!is.finite(seed) || seed < 0 || seed != floor(seed) || seed > .Machine$integer.max)))
     stop("seed must be NA or a nonnegative integer <= ", .Machine$integer.max)
-  cores <- mc_number("MC_TRAINING_CORES", if (is.na(seed)) "4" else "1", lower = 1, integer = TRUE)
+  default_cores <- Sys.getenv("MC_CORES", "4")
+  if (!nzchar(default_cores)) default_cores <- "4"
+  cores <- mc_number("MC_TRAINING_CORES", if (is.na(seed)) default_cores else "1", lower = 1, integer = TRUE)
   # debug info
   print(paste("Processing chrom:", chrom))
   print(paste("gene_annot_file:", gene_annot_file))

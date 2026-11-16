@@ -1,11 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # M07: explicit model strategy; preserve vendor math and GWAS column contract.
 set -euo pipefail
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PARALLEL_RUN="${HERE}/helpers/parallel_run.py"
 METAXCAN_DIR="${MC_METAXCAN_DIR:?}"
 DB_DIR="${MC_DB_DIR:?}"
 LD_COV_DIR="${MC_LD_COV_DIR:?}"
 GWAS_FILE="${MC_GWAS_FILT:?}"
 TWAS_OUT="${MC_TWAS_OUT:?}"
+CORES="${MC_CORES:-4}"
 case "${MC_TWAS_MODEL_SET:?Explicit unfiltered or filtered-signif model set required}" in
     unfiltered) DB_SUFFIX="_models_unfiltered.db" ;;
     filtered-signif) DB_SUFFIX="_models_filtered_signif.db" ;;
@@ -22,7 +25,10 @@ for ct in "${CELLTYPES[@]}"; do
     done
     [[ ! -e "$TWAS_OUT/$ct.csv" && ! -e "$TWAS_OUT/$ct.log" ]] || { echo "Refusing existing TWAS output/log: $ct" >&2; exit 1; }
 done
-for ct in "${CELLTYPES[@]}"; do
+
+export METAXCAN_DIR DB_DIR LD_COV_DIR GWAS_FILE TWAS_OUT DB_SUFFIX MC_TWAS_MODEL_SET
+twas_ct() {
+    local ct="$1"
     echo "$ct | ${MC_TWAS_MODEL_SET}"
     python3 "$METAXCAN_DIR/software/SPrediXcan.py" \
         --model_db_path "$DB_DIR/$ct$DB_SUFFIX" \
@@ -48,4 +54,7 @@ with open(sys.argv[1]) as f:
     if not count:
         sys.exit('Empty TWAS output')
 CHECK
-done
+}
+export -f twas_ct
+
+python3 "$PARALLEL_RUN" --cores "$CORES" --fn twas_ct -- "${CELLTYPES[@]}"
