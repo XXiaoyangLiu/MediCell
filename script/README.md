@@ -7,14 +7,14 @@ where noted) rather than hardcoded local paths.
 
 ## Directory Layout
 
-- `script/`: top-level step entrypoints (`M01`–`M08` for Part 1, `L01`–`L03` for
-  Part 2 LINCS), plus upstream reference notes/preprocessing scripts.
+- `script/`: top-level step entrypoints (`M01`–`M08` for cell-type TWAS, `L01`–`L03` for
+  LINCS therapeutic prioritization), plus upstream reference notes/preprocessing scripts.
 - `script/helpers/`: modular helper libraries, validation contracts, parallel
   runners, and sub-step utilities called by the entrypoint scripts.
 
 ---
 
-## Part 1: Cell-Type TWAS Pipeline Entrypoints
+## Cell-Type TWAS Pipeline Entrypoints
 
 Invoked by `python3 medicell.py` (using `--all`, `--steps`, `--<step>`, or
 positional `<step>`).
@@ -36,7 +36,7 @@ positional `<step>`).
 
 ---
 
-## Part 2: LINCS Drug Prioritization Entrypoints
+## LINCS Therapeutic Prioritization Entrypoints
 
 Invoked by `python3 medicell.py lincs` (or `python3 medicell.py --lincs`).
 

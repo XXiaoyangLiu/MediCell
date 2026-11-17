@@ -6,9 +6,10 @@ cell-type-dependent genetic effects. It deconvolves bulk RNA-seq into
 cell-type-resolved expression via CIBERSORTx + ENIGMA, trains
 cell-type-specific genetically regulated expression (GReX) models with
 elastic-net, and performs S-PrediXcan association against GWAS summary
-statistics. Part 2 (`medicell.py lincs`) integrates cell-type TWAS associations
-and expression profiles with LINCS L1000 perturbation signatures (`fgsea`) to
-prioritize candidate drugs per cell type.
+statistics. For downstream therapeutic discovery, `medicell.py lincs` integrates
+cell-type TWAS associations and expression profiles with LINCS L1000
+perturbational signatures (`fgsea`) to prioritize candidate therapeutic
+perturbations per cell type.
 
 
 ## Installation
@@ -352,9 +353,9 @@ The corrected standard path (`--gwas-manifest`) can legitimately produce
 different statistics for the same studies — that is expected, and the
 difference is the fix.
 
-## Part 2: LINCS drug prioritization (`medicell.py lincs`)
+## Therapeutic prioritization with LINCS (`medicell.py lincs`)
 
-Part 2 is invoked separately via `medicell.py lincs` (or `medicell.py --lincs`).
+Downstream therapeutic prioritization is invoked separately via `medicell.py lincs` (or `medicell.py --lincs`).
 It connects cell-type-resolved TWAS results and cell-type expression profiles
 with LINCS L1000 perturbation signatures (`fgsea`) to score candidate compounds
 for each cell type:
@@ -376,8 +377,8 @@ for each cell type:
 
 Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
 `lincsTissueSpecific.R`, `formatLeadingSpecific.pl`, `formatZscoreSpecific.pl`,
-`getZscoreSpecificMatrix.R`). Because `setup.sh` provisions only Part 1 envs
-(`R4.4.3`, `r3.6.3`, `imlatools`), Part 2 additionally requires an R environment
+`getZscoreSpecificMatrix.R`). Because `setup.sh` provisions only the core TWAS envs
+(`R4.4.3`, `r3.6.3`, `imlatools`), LINCS therapeutic prioritization additionally requires an R environment
 with `fgsea`, `dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs),
 selected automatically (`R4.4.3` / `r_4.6.1`) or via `--lincs-env <env>`. Large
 GMT files (`data/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
@@ -386,7 +387,7 @@ them locally under `data/lincs/` or pass `--lincs-gmt`.
 ### Quick start
 
 ```bash
-# 1) Continue from a Part 1 output directory (reuses M01 ENIGMA + M08 summary)
+# 1) Continue from an existing TWAS output directory (reuses inferExp ENIGMA + summarizeTWAS outputs)
 python3 medicell.py lincs \
     --output-dir run_out \
     --gene-pos data/gene_pos_grch37.82.csv \
@@ -422,7 +423,7 @@ python3 medicell.py lincs \
 
 | Option | Default | Description |
 |---|---|---|
-| `--output-dir` | required | Output root (may reuse Part 1 `--output-dir` containing `M01`/`M08`). |
+| `--output-dir` | required | Output root (may reuse a TWAS `--output-dir` containing `M01_deconvolution` and `M08_summary`). |
 | `--cores` | `4` | Unified parallel worker/core budget across all steps (`--training-cores` / `--lincs-cores` still work as overrides). |
 | `--steps` / `--<step>` | `prepLincs,enrichLincs,scoreLincs` | Steps to run (`L01,L02,L03` aliases work; defaults to `prepLincs,scoreLincs` with `--lincs-sig-csv`). |
 | `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |

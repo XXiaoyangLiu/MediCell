@@ -105,19 +105,19 @@ These inputs contain authorized cohort-derived data. Keep `test/data/`,
 Do not redistribute them or include them in a portable release without separate
 permission. Only test scripts and documentation are synchronized locally.
 
-## LINCS Part 2 test (`test/run_lincs.sh`)
+## LINCS therapeutic prioritization test (`test/run_lincs.sh`)
 
-`test/run_lincs.sh` validates the Part 2 LINCS pipeline (`prepLincs -> enrichLincs -> scoreLincs`) and is invoked automatically at the end of `test/run_full.sh`:
+`test/run_lincs.sh` validates the LINCS therapeutic prioritization pipeline (`prepLincs -> enrichLincs -> scoreLincs`) and is invoked automatically at the end of `test/run_full.sh`:
 
 ```bash
 # Run standalone LINCS smoke tests
 bash test/run_lincs.sh
 
-# Or verify both Part 1 and Part 2 (including M01 + M08 -> LINCS handoff)
+# Or run the full TWAS + LINCS suite (including inferExp/summarizeTWAS -> LINCS handoff)
 bash test/run_full.sh
 ```
 
 `test/check_lincs_results.py` checks:
 - self-contained multi-gene `prepLincs -> enrichLincs -> scoreLincs` (`--direction both --cores 4`) and score symmetry;
 - Broad `LINCS_PRL_top250_human.gmt` + Phase 1/2 perturbation annotation join when `data/lincs/` GMT files are present;
-- Part 1 `M01` ENIGMA `.RData` + `M08` TWAS handoff when a Part 1 output directory is passed.
+- Upstream `inferExp` (`M01`) ENIGMA `.RData` + `summarizeTWAS` (`M08`) handoff when a TWAS output directory is passed.

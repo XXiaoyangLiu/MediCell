@@ -151,7 +151,7 @@ def read_metadata(path):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
-        description="MediCell pipeline driver (use `medicell.py lincs --help` for Part 2 LINCS drug prioritization)")
+        description="MediCell pipeline driver (use `medicell.py lincs --help` for LINCS therapeutic prioritization)")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--alpha", type=float, default=0.1,
                    help="ENIGMA alpha (default 0.1)")
@@ -530,9 +530,9 @@ def resolve_lincs_env(env_base, requested):
 def parse_lincs_args(argv):
     p = argparse.ArgumentParser(
         prog="medicell.py lincs",
-        description="MediCell Part 2: LINCS perturbation enrichment and cell-type drug scoring")
+        description="MediCell LINCS therapeutic prioritization: perturbational enrichment and cell-type scoring")
     p.add_argument("--output-dir", required=True,
-                   help="output directory (may reuse Part 1 output-dir containing M01/M08)")
+                   help="output directory (may reuse a TWAS output-dir containing M01_deconvolution/M08_summary)")
     p.add_argument("--steps", nargs="+", metavar="STEP", default=None,
                    help="LINCS steps to run in order: " + ",".join(LINCS_STEPS)
                         + " (L01,L02,L03 aliases also work; default: all, or prepLincs,scoreLincs when --lincs-sig-csv is given)")
