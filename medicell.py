@@ -508,6 +508,16 @@ def conda_exe():
     return "conda"
 
 
+def with_bundled_r_libs(env_name, env):
+    """Prepend bundled R packages for env_name (if staged under tools/R_libs) to R_LIBS_USER."""
+    rlib = os.path.join(REPO, "tools", "R_libs", env_name)
+    if os.path.isdir(rlib):
+        env = env.copy()
+        prev = env.get("R_LIBS_USER", "")
+        env["R_LIBS_USER"] = rlib + (os.pathsep + prev if prev else "")
+    return env
+
+
 def resolve_lincs_env(env_base, requested):
     """Pick an R environment with fgsea installed unless explicitly provided."""
     if requested:
@@ -576,13 +586,13 @@ def parse_lincs_args(argv):
 
     lincs = p.add_argument_group("LINCS enrichment and scoring")
     lincs.add_argument("--lincs-gmt",
-                       default=os.path.join(REPO, "data", "lincs", "LINCS_PRL_top250_human.gmt"),
+                       default=os.path.join(REPO, "data", "ref", "lincs", "LINCS_PRL_top250_human.gmt"),
                        help="LINCS/gene-set GMT file")
     lincs.add_argument("--lincs-pert-phase1",
-                       default=os.path.join(REPO, "data", "lincs", "GSE92742_Broad_LINCS_pert_info.txt.gz"),
+                       default=os.path.join(REPO, "data", "ref", "lincs", "GSE92742_Broad_LINCS_pert_info.txt.gz"),
                        help="optional Phase 1 perturbation annotation (.txt.gz; pass '' to disable)")
     lincs.add_argument("--lincs-pert-phase2",
-                       default=os.path.join(REPO, "data", "lincs", "GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz"),
+                       default=os.path.join(REPO, "data", "ref", "lincs", "GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz"),
                        help="optional Phase 2 perturbation annotation (.txt.gz; pass '' to disable)")
     lincs.add_argument("--lincs-input-csv", default="",
                        help="optional pre-split directional TWAS CSV for standalone L02")
@@ -692,6 +702,7 @@ def run_lincs_mode(argv):
     print_lock = threading.Lock()
 
     def conda_run(env_name, cmd, env):
+        env = with_bundled_r_libs(env_name, env)
         if env_base:
             env = env.copy()
             bindir = os.path.join(env_base, env_name, "bin")
@@ -877,6 +888,7 @@ def main():
     print_lock = threading.Lock()
 
     def conda_run(env_name, cmd, env):
+        env = with_bundled_r_libs(env_name, env)
         if env_base:
             # portable mode: run binaries directly, env bin first on PATH
             env = env.copy()

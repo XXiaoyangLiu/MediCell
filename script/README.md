@@ -43,7 +43,7 @@ Invoked by `python3 medicell.py lincs` (or `python3 medicell.py --lincs`).
 | Step (`--<step>`) | Legacy Alias | Script | Conda Env | Parallelism (`--cores`) | Purpose |
 |---|---|---|---|---|---|
 | `prepLincs` | `L01` | `L01_lincs_prepare.R` | auto (`R4.4.3` / `r_4.6.1`) | Single-process | Read TWAS results (`.csv`/`.tsv`/`.xlsx`), split by z-score sign (`pos`/`neg`), write normalized `Gene/CellType/Zscore` table, and prepare gene-symbol x cell-type expression matrix (from `--exp-matrix` or M01 ENIGMA `.RData`). |
-| `enrichLincs` | `L02` | `L02_lincs_enrichment.R` | auto (`R4.4.3` / `r_4.6.1`) | `fgsea(..., nproc)` (+ parallel `pos`/`neg` with `--direction both`) | Run `fgsea` enrichment on directional ranked TWAS genes against a GMT library (default `data/lincs/LINCS_PRL_top250_human.gmt`), attach optional L1000 Phase 1/2 perturbation metadata, and filter hits. |
+| `enrichLincs` | `L02` | `L02_lincs_enrichment.R` | auto (`R4.4.3` / `r_4.6.1`) | `fgsea(..., nproc)` (+ parallel `pos`/`neg` with `--direction both`) | Run `fgsea` enrichment on directional ranked TWAS genes against a GMT library (default `data/ref/lincs/LINCS_PRL_top250_human.gmt`), attach optional L1000 Phase 1/2 perturbation metadata, and filter hits. |
 | `scoreLincs` | `L03` | `L03_lincs_drug_score.sh` | auto (`R4.4.3` / `r_4.6.1`) | Parallel `pos`/`neg` with `--direction both` | Orchestrate the 4 LINCS scoring helpers in `script/helpers/` to filter top perturbations, extract leading-edge TWAS z-scores, and write drug x cell-type `RankScore` matrices (`.RData` and `.csv`). |
 
 ---

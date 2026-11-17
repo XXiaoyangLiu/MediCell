@@ -14,34 +14,41 @@ perturbations per cell type.
 
 ## Installation
 
-Requirements: a Linux server with conda (a recent Miniconda/Miniforge; the
-installer auto-detects `~/miniforge3/bin/conda` or `$CONDA_EXE`, since system
-condas on some clusters are too old) and network access to conda-forge,
-bioconda and GitHub.
+Requirements: a Linux server (`x86_64`) with conda (a recent Miniconda/Miniforge;
+the driver auto-detects `~/miniforge3/bin/conda`, `$CONDA_EXE`, or `conda` on `PATH`).
+Pre-built runtime tools (`ENIGMA`, `PEER`, `METAL`, and `MetaXcan`) are already
+bundled inside the release archive, so no source compilation is required.
+
+1. Download and unpack the release archives from GitHub Releases:
 
 ```bash
-git clone git@github.com:delect-aj/MediCell.git
+tar xzf medicell-software.tar.gz
+tar xzf medicell-ref-data.tar.gz -C MediCell/data
 cd MediCell
-bash setup.sh
 ```
 
-`setup.sh` is idempotent (safe to re-run at any time) and installs:
+This creates `MediCell/` with the reference databases placed at `MediCell/data/ref/`
+(`data/ref/lincs/LINCS_PRL_top250_human.gmt`, `LINCS_PRL_top250.gmt`,
+`GSE92742_Broad_LINCS_pert_info.txt.gz`, and `GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz`).
 
-| Component | Description |
-|---|---|
-| conda env `R4.4.3` | R 4.4.3 with ENIGMA, glmnet, RSQLite and other model-building packages |
-| conda env `r3.6.3` | legacy R 3.6.3 with PEER (PEER requires it) |
-| conda env `imlatools` | Python MetaXcan runtime + bcftools |
-| PEER | R package, built from source (github.com/PMBio/peer) |
-| ENIGMA | R package, installed from github.com/WWXkenmo/ENIGMA |
-| MetaXcan | cloned to `tools/MetaXcan` |
-| METAL | compiled to `tools/METAL/metal` |
-
-To install a lab-internal ENIGMA version instead of the public one:
+2. Create the three runtime conda environments:
 
 ```bash
-bash setup.sh --enigma-src /path/to/ENIGMA
+conda env create -f envs/R4.4.3.yml
+conda env create -f envs/r3.6.3.yml
+conda env create -f envs/imlatools.yml
 ```
+
+| Component | Location / Name | Description |
+|---|---|---|
+| conda env `R4.4.3` | `envs/R4.4.3.yml` | R 4.4.3 runtime for ENIGMA, elastic-net training, SQLite DBs, GWAS processing, and `fgsea` LINCS enrichment |
+| conda env `r3.6.3` | `envs/r3.6.3.yml` | Legacy R 3.6.3 runtime for PEER hidden-factor estimation |
+| conda env `imlatools` | `envs/imlatools.yml` | Python 3.10 runtime for MetaXcan / S-PrediXcan and `bcftools` |
+| Bundled binaries & libraries | `tools/` | Pre-built `METAL`, `MetaXcan`, `ENIGMA` (`tools/R_libs/R4.4.3`), and `PEER` (`tools/R_libs/r3.6.3`) loaded automatically by `medicell.py` |
+| Reference databases | `data/ref/` | Extracted from `medicell-ref-data.tar.gz` into `MediCell/data/` (`data/ref/lincs/...` for `medicell.py lincs`) |
+
+No `setup.sh` step is needed when using the release archives; once the conda
+environments are created, `python3 medicell.py` runs directly.
 
 ## Usage
 
@@ -365,9 +372,9 @@ for each cell type:
    builds a gene-symbol x cell-type expression matrix (either from `--exp-matrix`
    or by averaging `inferExp` ENIGMA `enigma.cse.test` across samples per cell type).
 2. **`enrichLincs` (`L02`, `script/L02_lincs_enrichment.R`)**: Runs `fgsea` on
-   the ranked directional TWAS genes against `data/lincs/LINCS_PRL_top250_human.gmt`
+   the ranked directional TWAS genes against `data/ref/lincs/LINCS_PRL_top250_human.gmt`
    (or a custom `--lincs-gmt`), annotates hits with L1000 Phase 1/2 perturbation
-   metadata (`GSE92742` and `GSE70138` in `data/lincs/`), and filters hits by
+   metadata (`GSE92742` and `GSE70138` in `data/ref/lincs/`), and filters hits by
    significance and NES sign (default `NES < 0`, `pval < 0.05`).
 3. **`scoreLincs` (`L03`, `script/L03_lincs_drug_score.sh`)**: Selects the top
    perturbations per run, extracts their leading-edge genes and per-cell-type
@@ -381,8 +388,8 @@ Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
 (`R4.4.3`, `r3.6.3`, `imlatools`), LINCS therapeutic prioritization additionally requires an R environment
 with `fgsea`, `dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs),
 selected automatically (`R4.4.3` / `r_4.6.1`) or via `--lincs-env <env>`. Large
-GMT files (`data/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
-them locally under `data/lincs/` or pass `--lincs-gmt`.
+GMT files (`data/ref/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
+them locally under `data/ref/lincs/` or pass `--lincs-gmt`.
 
 ### Quick start
 
@@ -433,7 +440,7 @@ python3 medicell.py lincs \
 | `--twas-file` | `M08_summary/...` | TWAS summary table (`.csv`, `.tsv`, `.txt`, or `.xlsx` with `--twas-sheet`). |
 | `--twas-gene-col`, `--twas-zscore-col`, `--twas-padj-col`, `--twas-celltype-col` | auto-detect | Explicit column names if your TWAS table uses non-standard headers. |
 | `--exp-matrix` | from `M01` | Pre-built gene-symbol x cell-type CSV (rows = genes, columns = cell types). |
-| `--lincs-gmt` | `data/lincs/LINCS_PRL_top250_human.gmt` | Perturbation/gene-set GMT file (`--lincs-pert-phase1/2 ""` disables extra annotation). |
+| `--lincs-gmt` | `data/ref/lincs/LINCS_PRL_top250_human.gmt` | Perturbation/gene-set GMT file (`--lincs-pert-phase1/2 ""` disables extra annotation). |
 | `--lincs-sig-col`, `--lincs-sig-cutoff`, `--lincs-nes-filter` | `pval`, `0.05`, `neg` | Significance filter (`pval` or `padj`) and NES direction (`neg`, `pos`, `all`). |
 | `--top-n`, `--lincs-rank-by`, `--exclude-pert-pattern` | `50`, `pval`, `^BRD-\|trt_sh\.css` | Top perturbations kept in `L03`; pass `--exclude-pert-pattern ""` to keep all. |
 

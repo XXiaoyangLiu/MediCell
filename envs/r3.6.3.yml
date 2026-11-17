@@ -7,8 +7,4 @@ dependencies:
   - r-data.table
   - r-stringr
   - r-rcpp
-  - make
-  - gcc
-  - gxx
-  - swig
-  - cmake<4
+  - zlib

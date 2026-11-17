@@ -49,9 +49,9 @@ python3 -u medicell.py lincs \
     --exclude-pert-pattern "" 2>&1 | tee "$OUT/standalone.log"
 
 # 2. If local Broad LINCS GMT + Phase 1/2 metadata exist, verify real GMT/annotation join.
-BROAD_GMT="data/lincs/LINCS_PRL_top250_human.gmt"
-PERT1="data/lincs/GSE92742_Broad_LINCS_pert_info.txt.gz"
-PERT2="data/lincs/GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz"
+BROAD_GMT="data/ref/lincs/LINCS_PRL_top250_human.gmt"
+PERT1="data/ref/lincs/GSE92742_Broad_LINCS_pert_info.txt.gz"
+PERT2="data/ref/lincs/GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz"
 if [[ -s "$BROAD_GMT" && -s "$PERT1" && -s "$PERT2" ]]; then
     python3 - "$BROAD_GMT" "$OUT/fixture" <<'PY'
 from pathlib import Path

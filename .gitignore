@@ -7,3 +7,7 @@ tools/
 test/attempts/
 test/*.log
 data/lincs/*.gmt
+data/ref/*
+!data/ref/README.md
+release/
+tools/R_libs/
