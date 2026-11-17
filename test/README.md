@@ -71,10 +71,6 @@ The standard default post-meta policy is `none`; the filtering step still runs.
 The tiny staged VCF defines the test LD panel, so its allele frequencies need
 not equal those from the complete 1000 Genomes panel.
 
-`prepare_data.py` regenerates the fixture from the authorized server sources.
-It refuses to overwrite a nonempty `test/data/` directory. Regeneration requires
-access to those sources and is not required for repeated test runs.
-`resize_expression.py` was used only to diagnose the smaller, unsuccessful panels.
 
 ## Checks and limitations
 

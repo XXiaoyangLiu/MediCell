@@ -274,7 +274,7 @@ Run control:
 | `--gwas-id` | trait label (required for `--gwas-manifest` and standalone `summarizeTWAS` without `gwas_run.json`; auto-recovered from `gwas_run.json` when present) |
 | `--gwas-summary` | explicit filtered GWAS summary for `runTWAS` (`M07`) |
 
-Environment/tools (defaults match `setup.sh`):
+Environment/tools (defaults match `envs/*.yml` and bundled `tools/`):
 
 | Parameter | Description |
 |---|---|
@@ -384,10 +384,10 @@ for each cell type:
 
 Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
 `lincsTissueSpecific.R`, `formatLeadingSpecific.pl`, `formatZscoreSpecific.pl`,
-`getZscoreSpecificMatrix.R`). Because `setup.sh` provisions only the core TWAS envs
-(`R4.4.3`, `r3.6.3`, `imlatools`), LINCS therapeutic prioritization additionally requires an R environment
-with `fgsea`, `dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs),
-selected automatically (`R4.4.3` / `r_4.6.1`) or via `--lincs-env <env>`. Large
+`getZscoreSpecificMatrix.R`). The `R4.4.3` environment defined in `envs/R4.4.3.yml` includes `fgsea`,
+`dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs) required by
+LINCS therapeutic prioritization, selected automatically (`R4.4.3` / `r_4.6.1`) or
+via `--lincs-env <env>`. Large
 GMT files (`data/ref/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
 them locally under `data/ref/lincs/` or pass `--lincs-gmt`.
 

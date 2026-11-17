@@ -8,7 +8,7 @@ where noted) rather than hardcoded local paths.
 ## Directory Layout
 
 - `script/`: top-level step entrypoints (`M01`–`M08` for cell-type TWAS, `L01`–`L03` for
-  LINCS therapeutic prioritization), plus upstream reference notes/preprocessing scripts.
+  LINCS therapeutic prioritization).
 - `script/helpers/`: modular helper libraries, validation contracts, parallel
   runners, and sub-step utilities called by the entrypoint scripts.
 
@@ -66,14 +66,3 @@ Invoked by `python3 medicell.py lincs` (or `python3 medicell.py --lincs`).
 | `formatZscoreSpecific.pl` | `L03_lincs_drug_score.sh` | Extracts TWAS z-scores for leading-edge genes per cell type (supports named CSV/TSV headers as well as legacy 13-column whitespace tables). |
 | `getZscoreSpecificMatrix.R` | `L03_lincs_drug_score.sh` | Computes cross-cell-type expression specificity (`expZscore`, requiring `>= 2` overlapping cell types) and sums `|TWAS_zscore| * expZscore` over leading-edge genes for each drug. |
 
----
-
-## Reference & Upstream Files (Not Executed by `medicell.py`)
-
-| File | Description |
-|---|---|
-| `HARDCODING_NOTES.md` | Design note documenting explicit input configuration and removal of tissue-specific presets. |
-| `M00_envs` | Historical conda environment snapshot (superseded by `envs/*.yml` and `setup.sh`). |
-| `M01_DataProcess_forENIGMA.R` | Standalone upstream reference script showing how scRNA-seq pseudobulk TPM and single-cell reference matrices were prepared prior to `inferExp` (`M01`). |
-| `M02_DataProcess_annot_fordb.R` | Historical upstream preprocessing script for formatting `gene_annot.parsed.txt` (includes notes on duplicate symbol fixes). |
-| `M02_DataProcess_annot_fordb.sh` | Historical upstream notes/commands for VCF QC, MAF filtering, and genotype dosage preparation prior to `trainModel` (`M03`). |

@@ -47,9 +47,6 @@ cp -a "${REPO_DIR}/envs/"*.yml "${PKG}/envs/"
 rsync -a \
     --exclude '__pycache__' \
     --exclude '*.pyc' \
-    --exclude '*.bak' \
-    --exclude 'M00_envs' \
-    --exclude 'HARDCODING_NOTES.md' \
     "${REPO_DIR}/script/" "${PKG}/script/"
 
 cp -a "${REPO_DIR}/tools/METAL/metal" "${PKG}/tools/METAL/metal"
