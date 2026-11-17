@@ -21,6 +21,10 @@ library(tidyr)
 
 df <- read.table(zscore_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 exp <- read.csv(exp_file, header = TRUE, na.strings = c("", "NA"), row.names = 1, check.names = FALSE)
+if (ncol(exp) < 2L) {
+  stop("Cross-cell-type LINCS scoring requires at least 2 cell types in expression matrix; found ",
+       ncol(exp), " (", paste(colnames(exp), collapse = ", "), ").")
+}
 exp[is.na(exp)] <- 0
 
 dir.create(dirname(out_rdata), recursive = TRUE, showWarnings = FALSE)
@@ -51,6 +55,10 @@ common_cts <- intersect(colnames(twas_mat), colnames(exp))
 if (length(common_genes) == 0 || length(common_cts) == 0) {
   stop("No overlap between TWAS genes/cell types and expression matrix (",
        length(common_genes), " genes, ", length(common_cts), " cell types).")
+}
+if (length(common_cts) < 2L) {
+  stop("Cross-cell-type LINCS scoring requires at least 2 overlapping cell types between TWAS and expression matrix; found ",
+       length(common_cts), " (", paste(common_cts, collapse = ", "), ").")
 }
 
 twas_sub <- twas_mat[common_genes, common_cts, drop = FALSE]

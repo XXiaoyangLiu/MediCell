@@ -23,11 +23,27 @@ get_filtered_snp_annot <- function(snp_annot_file_name) {
 
 get_maf_filtered_genotype <- function(genotype_file_name,  maf, samples) {
   if (length(maf) != 1 || !is.finite(maf) || maf < 0 || maf > .5) stop("maf must be a finite number in [0, 0.5]")
+  maf_policy <- mc_choice("MC_MAF_POLICY", c("filter", "verify"), default = "filter")
   gt <- mc_matrix(genotype_file_name, "Genotype")
   gt_df <- as.data.frame(t(gt[, mc_sample_match(samples, colnames(gt), "Genotype sample IDs"), drop = FALSE]))
   rownames(gt_df) <- samples
+  if (any(gt_df < 0 | gt_df > 2)) {
+    stop("Genotype dosages must lie in [0, 2]: ", genotype_file_name)
+  }
   effect_allele_freqs <- colMeans(gt_df) / 2
-  gt_df <- gt_df[,which((effect_allele_freqs >= maf) & (effect_allele_freqs <= 1 - maf)), drop = FALSE]
+  snps_maf <- pmin(effect_allele_freqs, 1 - effect_allele_freqs)
+  keep <- if (maf == 0) rep(TRUE, length(snps_maf)) else (snps_maf >= maf & snps_maf > 0)
+  if (maf_policy == "verify" && any(!keep)) {
+    stop("Input genotype violates declared MAF >= ", maf, " (",
+         sum(!keep), "/", length(keep), " variants below threshold or monomorphic): ",
+         genotype_file_name)
+  }
+  gt_df <- gt_df[, which(keep), drop = FALSE]
+  if (!ncol(gt_df)) {
+    stop("No genotype variants pass MAF >= ", maf, " in ", genotype_file_name)
+  }
+  message("Genotype variants retained (MAF >= ", maf, ", policy=", maf_policy, "): ",
+          ncol(gt_df), "/", length(keep))
   gt_df
 }
 
@@ -44,7 +60,30 @@ get_gene_annotation <- function(gene_annot_file_name, chrom, gene_types=c('prote
   mc_ids(gene_df$gene_id, "Gene annotation gene_id mapping")
   mc_numeric(gene_df$start, "Gene annotation start"); mc_numeric(gene_df$end, "Gene annotation end")
   if (any(gene_df$start < 0 | gene_df$end < gene_df$start)) stop("Gene coordinates require 0 <= start <= end")
-  gene_df <- gene_df[(gene_df$chr == chrom) & gene_df$gene_type %in% gene_types, , drop = FALSE]
+  gene_df <- gene_df[gene_df$gene_type %in% gene_types, , drop = FALSE]
+  if (any(gene_df$end > gene_df$start)) {
+    if ("tss" %in% names(gene_df)) {
+      mc_numeric(gene_df$tss, "Gene annotation tss")
+      if (any(gene_df$tss < gene_df$start | gene_df$tss > gene_df$end)) {
+        stop("Gene annotation tss must satisfy start <= tss <= end")
+      }
+      gene_df$start <- gene_df$tss
+      gene_df$end <- gene_df$tss
+    } else if ("strand" %in% names(gene_df)) {
+      st <- trimws(as.character(gene_df$strand))
+      if (any(!st %in% c("+", "-", "1", "-1"))) {
+        stop("Gene annotation strand must be one of +, -, 1, -1 when intervals are not TSS-collapsed")
+      }
+      is_plus <- st %in% c("+", "1")
+      tss <- ifelse(is_plus, gene_df$start, gene_df$end)
+      gene_df$start <- tss
+      gene_df$end <- tss
+    } else {
+      stop("Gene annotation contains intervals with start < end without a 'strand' or 'tss' column; ",
+           "cannot determine TSS for +/-1 Mb cis window. Provide strand (+/-), tss, or TSS-collapsed coordinates (start == end).")
+    }
+  }
+  gene_df <- gene_df[gene_df$chr == chrom, , drop = FALSE]
   gene_df
 }
 

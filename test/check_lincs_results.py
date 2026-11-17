@@ -59,7 +59,11 @@ if broad.is_dir():
     broad_scores = read_csv(broad / "L03_drug_scores/cohortB_BROADTEST_pos.drug_celltype_score.csv")
     assert len(broad_scores) >= 1, "Expected >=1 scored drug in Broad LINCS test"
 
-# 3. Verify Part 1 M01 + M08 -> Part 2 handoff if executed
+# 3. Verify single-cell-type LINCS scoring rejection log
+rej_log = (out / "single_ct_reject.log").read_text()
+assert "at least 2 cell types" in rej_log
+
+# 4. Verify Part 1 M01 + M08 -> Part 2 prepLincs + enrichLincs handoff if executed
 if part1_out is not None:
     h_log = (out / "part1_handoff.log").read_text()
     assert "MediCell LINCS run complete." in h_log and "Traceback" not in h_log
@@ -69,8 +73,6 @@ if part1_out is not None:
         "L01_inputs/pbmc_exp_matrix.csv",
         "L02_enrichment/LINCS_all_SLE_pbmc_pos.csv",
         "L02_enrichment/LINCS_sig_SLE_pbmc_pos.csv",
-        "L03_drug_scores/pbmc_SLE_pos.drug_celltype_score.RData",
-        "L03_drug_scores/pbmc_SLE_pos.drug_celltype_score.csv",
     ]:
         assert (part1_out / rel).is_file(), f"Missing Part 1->2 handoff output: {rel}"
 

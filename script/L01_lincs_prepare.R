@@ -116,12 +116,20 @@ twas_df <- twas_df[
   drop = FALSE
 ]
 
+min_cts <- suppressWarnings(as.integer(opt_env("MC_LINCS_MIN_CTS", "2")))
+if (is.na(min_cts) || min_cts < 1L) min_cts <- 2L
 cell_types <- if (nzchar(cell_types_raw)) strsplit(trimws(cell_types_raw), "[[:space:]]+")[[1]] else character(0)
 if (length(cell_types) > 0) {
   twas_df <- twas_df[twas_df[[ct_col]] %in% cell_types, , drop = FALSE]
   if (nrow(twas_df) == 0) {
     stop("No TWAS rows match requested --cell-types: ", paste(cell_types, collapse = ", "))
   }
+}
+n_twas_cts <- length(unique(twas_df[[ct_col]]))
+if (min_cts >= 2L && n_twas_cts < min_cts) {
+  stop("LINCS scoring requires at least ", min_cts,
+       " cell types in TWAS input for cross-cell-type normalization; found ",
+       n_twas_cts, " (", paste(unique(twas_df[[ct_col]]), collapse = ", "), ").")
 }
 
 norm_twas <- data.frame(
@@ -165,6 +173,10 @@ if (nzchar(exp_matrix_in)) {
       stop("Cell types missing from --exp-matrix: ", paste(missing_ct, collapse = ", "))
     }
     exp_df <- exp_df[, cell_types, drop = FALSE]
+  }
+  if (min_cts >= 2L && ncol(exp_df) < min_cts) {
+    stop("LINCS scoring requires at least ", min_cts,
+         " cell types in expression matrix; found ", ncol(exp_df), ".")
   }
   write.csv(exp_df, file = exp_out_path, row.names = TRUE)
   message("Prepared expression matrix (", nrow(exp_df), " genes x ", ncol(exp_df), " cell types) -> ", exp_out_path)
@@ -226,6 +238,10 @@ if (nzchar(exp_matrix_in)) {
     }
   }
 
+  if (min_cts >= 2L && ncol(exp_mat) < min_cts) {
+    stop("LINCS scoring requires at least ", min_cts,
+         " cell types in aggregated expression matrix; found ", ncol(exp_mat), ".")
+  }
   write.csv(exp_mat, file = exp_out_path, row.names = TRUE)
   message("Aggregated ENIGMA expression matrix (", nrow(exp_mat), " genes x ", ncol(exp_mat), " cell types) -> ", exp_out_path)
 }

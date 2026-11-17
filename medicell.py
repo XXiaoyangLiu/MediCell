@@ -229,6 +229,10 @@ def parse_args(argv=None):
                      help="genome build declared for this cohort's coordinates")
     gen.add_argument("--training-population", default="unspecified",
                      help="optional population label stored with the models (default unspecified)")
+    gen.add_argument("--maf", type=float, default=0.01,
+                     help="minor allele frequency threshold for trainModel genotype variants in [0, 0.5] (default 0.01)")
+    gen.add_argument("--maf-policy", choices=["filter", "verify"], default="filter",
+                     help="filter: drop variants with MAF < --maf; verify: fail if input genotype violates --maf (default filter)")
     gen.add_argument("--ld-panel-id", default="EUR_EAS",
                      help="LD panel id used in dosage/covariance file names (default EUR_EAS)")
     gen.add_argument("--twas-model-set", choices=["unfiltered", "filtered-signif"], default=None,
@@ -320,6 +324,8 @@ def parse_args(argv=None):
         p.error("--min-samples must be non-negative")
     if args.min_level_count < 0:
         p.error("--min-level-count must be non-negative")
+    if not math.isfinite(args.maf) or not 0 <= args.maf <= 0.5:
+        p.error("--maf must be a finite number in [0, 0.5]")
     if args.seed is not None and not 0 <= args.seed <= 2147483647:
         p.error("--seed must be an integer in 0..2147483647")
     if args.cores is not None and args.cores < 1:
@@ -394,55 +400,70 @@ def parse_args(argv=None):
     profile, manifest = args.gwas_profile, args.gwas_manifest
     needs_mode = bool(set(args.steps) & GWAS_STEPS) or \
         ("runTWAS" in args.steps and not args.gwas_summary)
+    needs_summary_id = "summarizeTWAS" in args.steps
     args.gwas_mode_recovered = False
     saved = None
     requested_profile, requested_manifest = profile, manifest
-    if needs_mode:
+    if needs_mode or (needs_summary_id and not args.gwas_summary):
         saved = read_metadata(run_meta)
         if saved is not None:
             if not isinstance(saved, dict):
                 p.error("Invalid GWAS mode record: " + run_meta)
-            profile, manifest = saved.get("profile"), saved.get("manifest")
-            if (bool(profile) == bool(manifest)
-                    or (profile and profile not in LEGACY_GWAS_PROFILES)
-                    or (manifest and (not isinstance(manifest, str)
-                                      or not os.path.isabs(manifest)))):
-                p.error("Invalid GWAS mode record: " + run_meta)
-            if (requested_profile and requested_profile != profile) or (
-                    requested_manifest and (not manifest or
-                    os.path.abspath(requested_manifest) != manifest)):
-                p.error("Explicit GWAS mode conflicts with existing provenance; use a new output directory")
-            if manifest and saved.get("manifest_sha256"):
-                if os.path.isfile(manifest):
-                    with open(manifest,"rb") as f:
-                        digest = hashlib.sha256(f.read()).hexdigest()
-                    if digest != saved["manifest_sha256"]:
-                        p.error("GWAS manifest content changed; use a new output directory")
-                elif requested_manifest:
-                    p.error("Explicit GWAS manifest no longer exists")
             saved_id = saved.get("gwas_id")
-            saved_build = saved.get("genome_build", "GRCh37")
-            saved_policy = saved.get("filter_policy")
-            if (not isinstance(saved_id, str) or not re.fullmatch(SAFE_NAME, saved_id)
-                    or saved_build not in ("GRCh37", "GRCh38")
-                    or saved_policy not in ("none", "legacy")
-                    or (profile and saved_policy != "legacy")):
-                p.error("Invalid GWAS identity/build/filter record: " + run_meta)
-            for name, old, new in (("--gwas-id", saved_id, args.gwas_id),
-                                   ("--genome-build", saved_build, args.genome_build),
-                                   ("--gwas-filter-policy", saved_policy, args.gwas_filter_policy)):
-                if new is not None and new != old:
-                    p.error(name + " conflicts with recorded GWAS inputs; use a new output directory")
-            args.gwas_id, args.genome_build = saved_id, saved_build
-            args.gwas_filter_policy = saved_policy
-            args.gwas_mode_recovered = True
-            print("[gwas] recovered recorded mode from", run_meta)
+            if not isinstance(saved_id, str) or not re.fullmatch(SAFE_NAME, saved_id):
+                p.error("Invalid GWAS identity record: " + run_meta)
+            if args.gwas_id is not None and args.gwas_id != saved_id:
+                p.error("--gwas-id conflicts with recorded GWAS inputs; use a new output directory")
+            if needs_mode:
+                profile, manifest = saved.get("profile"), saved.get("manifest")
+                if (bool(profile) == bool(manifest)
+                        or (profile and profile not in LEGACY_GWAS_PROFILES)
+                        or (manifest and (not isinstance(manifest, str)
+                                          or not os.path.isabs(manifest)))):
+                    p.error("Invalid GWAS mode record: " + run_meta)
+                if (requested_profile and requested_profile != profile) or (
+                        requested_manifest and (not manifest or
+                        os.path.abspath(requested_manifest) != manifest)):
+                    p.error("Explicit GWAS mode conflicts with existing provenance; use a new output directory")
+                if manifest and saved.get("manifest_sha256"):
+                    if os.path.isfile(manifest):
+                        with open(manifest, "rb") as f:
+                            digest = hashlib.sha256(f.read()).hexdigest()
+                        if digest != saved["manifest_sha256"]:
+                            p.error("GWAS manifest content changed; use a new output directory")
+                    elif requested_manifest:
+                        p.error("Explicit GWAS manifest no longer exists")
+                saved_build = saved.get("genome_build", "GRCh37")
+                saved_policy = saved.get("filter_policy")
+                if (saved_build not in ("GRCh37", "GRCh38")
+                        or saved_policy not in ("none", "legacy")
+                        or (profile and saved_policy != "legacy")):
+                    p.error("Invalid GWAS identity/build/filter record: " + run_meta)
+                for name, old, new in (("--genome-build", saved_build, args.genome_build),
+                                       ("--gwas-filter-policy", saved_policy, args.gwas_filter_policy)):
+                    if new is not None and new != old:
+                        p.error(name + " conflicts with recorded GWAS inputs; use a new output directory")
+                args.genome_build = saved_build
+                args.gwas_filter_policy = saved_policy
+                args.gwas_mode_recovered = True
+                print("[gwas] recovered recorded mode from", run_meta)
+            else:
+                print("[gwas] recovered gwas_id={!r} from {}".format(saved_id, run_meta))
+            args.gwas_id = saved_id
     if needs_mode and not profile and not manifest:
         p.error("GWAS steps require an explicit --gwas-profile (historical SLE "
                 "reproduction, includes the known errors of the old "
                 "implementation) or --gwas-manifest (corrected standard path); "
                 "or reuse a successful recorded mode in " + run_meta)
-    args.gwas_id = args.gwas_id or "SLE"
+    if args.gwas_id is None:
+        if profile:
+            args.gwas_id = "SLE"
+        elif manifest:
+            p.error("--gwas-manifest requires an explicit --gwas-id")
+        elif needs_summary_id:
+            p.error("summarizeTWAS requires --gwas-id when no recorded GWAS provenance exists in " + run_meta)
+        else:
+            args.gwas_id = ""
     args.genome_build = args.genome_build or "GRCh37"
     if profile:
         if args.genome_build != "GRCh37":
@@ -459,7 +480,7 @@ def parse_args(argv=None):
         if profile and args.gwas_filter_policy != "legacy":
             p.error("the legacy profile fixes --gwas-filter-policy legacy")
         filter_policy = args.gwas_filter_policy
-    if saved and saved.get("prefix") != args.gwas_prefix:
+    if needs_mode and saved and saved.get("prefix") != args.gwas_prefix:
         p.error("Recorded GWAS prefix disagrees with analysis identity")
     args.gwas_filter_policy = filter_policy
     args.metal_tbl = (os.path.join(gwas_dir, args.gwas_prefix + "1.tbl")
@@ -642,6 +663,8 @@ def parse_lincs_args(argv):
             p.error("--cell-types contains duplicates")
     args.cell_types = cell_types
 
+    if "scoreLincs" in args.steps and len(args.cell_types) == 1:
+        p.error("LINCS scoring (scoreLincs) requires at least 2 cell types; single-cell-type input yields undefined cross-cell-type expression z-scores")
     if args.top_n < 1:
         p.error("--top-n must be >= 1")
     if args.lincs_min_size < 1 or args.lincs_max_size < args.lincs_min_size:
@@ -774,6 +797,7 @@ def run_lincs_mode(argv):
             "MC_LINCS_DIRECTION": direction,
             "MC_LINCS_TWAS_LABEL": twas_tag,
             "MC_CELLTYPES": " ".join(args.cell_types),
+            "MC_LINCS_MIN_CTS": "2" if "scoreLincs" in args.steps else "1",
             "MC_LINCS_TWAS_FILE": twas_file,
             "MC_LINCS_TWAS_SHEET": args.twas_sheet,
             "MC_LINCS_GENE_COL": args.twas_gene_col,
@@ -961,6 +985,8 @@ def main():
         "MC_COV_LAYOUT": args.cov_layout,
         "MC_GENOME_BUILD": args.genome_build,
         "MC_TRAIN_POPULATION": args.training_population,
+        "MC_MAF": str(args.maf),
+        "MC_MAF_POLICY": args.maf_policy,
         "MC_LD_PANEL_ID": args.ld_panel_id,
         "MC_TWAS_MODEL_SET": args.twas_model_set or "",
         "MC_CORES": str(args.cores_resolved),

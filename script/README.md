@@ -53,7 +53,7 @@ Invoked by `python3 medicell.py lincs` (or `python3 medicell.py --lincs`).
 | File | Caller(s) | Purpose |
 |---|---|---|
 | `input_contracts.R` | `M01`, `M02exp`, `M02cov`, `gtex_v7_nested_cv_elnet.R` | Input matrix/ID/numeric validators (`mc_matrix`, `mc_celltypes`, `mc_sample_match`, `mc_number`, `mc_choice`, `mc_load_enigma_inputs`). |
-| `gtex_v7_nested_cv_elnet.R` | `M03_ModelTraining.R` | Nested cross-validation elastic-net (`glmnet`) training core writing 24-column model summaries, weights, and SNP covariances. |
+| `gtex_v7_nested_cv_elnet.R` | `M03_ModelTraining.R` | Nested cross-validation elastic-net (`glmnet`) training core with TSS-window validation/collapse, `[0, 2]` dosage and `MC_MAF`/`MC_MAF_POLICY` enforcement, writing 24-column summaries, weights, and SNP covariances. |
 | `gwas_normalize.R` | `M05_DataProcess_GWAS_align4METAL.R` | Manifest-driven standard GWAS normalization (strict build check, `beta_se`/`or_se`/`or_p` handling, no silent strand guessing). |
 | `gwas_control.py` | `M05_DataProcess_GWAS_metal.sh` | Generates METAL control scripts, runs `metal`, and validates output variant counts/schema for standard and legacy modes. |
 | `legacy_sle_align.R` | `M05_DataProcess_GWAS_align4METAL.R` | Isolated legacy adapter reproducing historical SLE GWAS alignment (retained solely for `--gwas-profile` reproduction). |
@@ -64,7 +64,7 @@ Invoked by `python3 medicell.py lincs` (or `python3 medicell.py --lincs`).
 | `lincsTissueSpecific.R` | `L03_lincs_drug_score.sh` | Filters LINCS hits (e.g., excluding `^BRD-\|trt_sh.css`), ranks by `pval` or `padj`, and exports top-N perturbations and `leadingEdge` gene lists. |
 | `formatLeadingSpecific.pl` | `L03_lincs_drug_score.sh` | Splits `pert_iname` / `leadingEdge` tables into a deduplicated gene pool and `drug -> gene` pairs. |
 | `formatZscoreSpecific.pl` | `L03_lincs_drug_score.sh` | Extracts TWAS z-scores for leading-edge genes per cell type (supports named CSV/TSV headers as well as legacy 13-column whitespace tables). |
-| `getZscoreSpecificMatrix.R` | `L03_lincs_drug_score.sh` | Computes cross-cell-type expression specificity (`expZscore`) and sums `|TWAS_zscore| * expZscore` over leading-edge genes for each drug. |
+| `getZscoreSpecificMatrix.R` | `L03_lincs_drug_score.sh` | Computes cross-cell-type expression specificity (`expZscore`, requiring `>= 2` overlapping cell types) and sums `|TWAS_zscore| * expZscore` over leading-edge genes for each drug. |
 
 ---
 

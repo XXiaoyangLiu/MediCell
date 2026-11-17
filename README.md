@@ -198,7 +198,7 @@ according to the selected steps above; tuning options retain their defaults:
 | `--peer-keep` | PEER factors kept; explicit value required for `peerCov`; must be ≤ `--peer-nk` |
 | `--snp-annot-pattern` | per-chromosome SNP annotation, with `{chr}` placeholder |
 | `--genotype-pattern` | per-chromosome genotype dosage, with `{chr}` placeholder |
-| `--gene-annot` | gene annotation (parsed; protein-coding genes recommended) |
+| `--gene-annot` | gene annotation (TSS-collapsed `start == end`, or with `strand`/`tss` column to resolve TSS) |
 | `--snp-annot-file` | single-file genotype panel SNP annotation (for GWAS align) |
 | `--gwas-dir` | directory with the three SLE GWAS files: `GCST011096_buildGRCh37.tsv`, `GCST90018917_buildGRCh37.tsv.gz`, `GCST90476183_hg19.tsv.gz` (legacy profiles) |
 | `--g1000-vcf-pattern` | 1000 Genomes Phase 3 VCF pattern, with `{chr}` placeholder |
@@ -216,6 +216,8 @@ Input contracts:
 | `--training-population` | optional population label stored with the trained models (default `unspecified`) |
 | `--ld-panel-id` | LD panel id used in dosage/covariance file names (default `EUR_EAS`) |
 | `--twas-model-set` | `unfiltered` or `filtered-signif`; required for `buildDB`/`runTWAS` |
+| `--maf` | MAF threshold for `trainModel` genotypes in `[0, 0.5]` (default `0.01`; manuscript used `0.05`) |
+| `--maf-policy` | `filter` (drop variants `< --maf`) or `verify` (fail if input genotype violates `--maf`) |
 
 #### Covariates file format
 
@@ -263,7 +265,7 @@ Run control:
 | `--seed` | explicit `trainModel` seed; forces serial inner training (`--training-cores 1`) |
 | `--training-cores` | inner `trainModel` cores per `(cell_type, chr)` job (defaults from `--cores`) |
 | `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip `extractLD` (`M06ld`) extraction |
-| `--gwas-id` | trait label for standard-mode output names and reports (default SLE) |
+| `--gwas-id` | trait label (required for `--gwas-manifest` and standalone `summarizeTWAS` without `gwas_run.json`; auto-recovered from `gwas_run.json` when present) |
 | `--gwas-summary` | explicit filtered GWAS summary for `runTWAS` (`M07`) |
 
 Environment/tools (defaults match `setup.sh`):
@@ -428,7 +430,7 @@ python3 medicell.py lincs \
 | `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |
 | `--label` / `--tissue` | `cohort` | Cohort/compartment label used in output file names (no tissue presets). |
 | `--direction` | `pos` | TWAS z-score direction: `pos` (`>0`), `neg` (`<0`), or `both`. |
-| `--cell-types` | all | Optional comma/space-separated subset of cell types to retain. |
+| `--cell-types` | all | Optional comma/space-separated subset of cell types (`scoreLincs` requires `>= 2`). |
 | `--twas-file` | `M08_summary/...` | TWAS summary table (`.csv`, `.tsv`, `.txt`, or `.xlsx` with `--twas-sheet`). |
 | `--twas-gene-col`, `--twas-zscore-col`, `--twas-padj-col`, `--twas-celltype-col` | auto-detect | Explicit column names if your TWAS table uses non-standard headers. |
 | `--exp-matrix` | from `M01` | Pre-built gene-symbol x cell-type CSV (rows = genes, columns = cell types). |

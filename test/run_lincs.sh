@@ -107,10 +107,25 @@ PY
         --top-n 20 2>&1 | tee "$OUT/broad.log"
 fi
 
-# 3. If a Part 1 output directory was supplied, test M01 + M08 -> L01 -> L02 -> L03 handoff.
+# 3. Verify single-cell-type LINCS scoring is explicitly rejected (no silent all-zero scores).
+if python3 -u medicell.py lincs \
+    --output-dir "$OUT/single_ct_reject" \
+    --twas-file "$OUT/fixture/twas.csv" \
+    --exp-matrix "$OUT/fixture/exp.csv" \
+    --lincs-gmt "$OUT/fixture/custom.gmt" \
+    --lincs-pert-phase1 "" --lincs-pert-phase2 "" \
+    --cell-types CellA --trait TESTTRAIT --label cohortA --direction pos \
+    >"$OUT/single_ct_reject.log" 2>&1; then
+    echo "ERROR: single-cell-type LINCS scoring should have failed" >&2
+    exit 1
+fi
+
+# 4. If a Part 1 output directory was supplied, test M01 + M08 -> prepLincs -> enrichLincs handoff
+#    (Part 1 smoke fixture has only 1 CT in M08, so scoreLincs must be skipped/rejected).
 if [[ -n "$PART1_OUT" ]]; then
     python3 -u medicell.py lincs \
         --output-dir "$PART1_OUT" \
+        --steps prepLincs,enrichLincs \
         --cores 2 \
         --gene-pos test/data/gene_names.csv \
         --label pbmc --direction pos \
