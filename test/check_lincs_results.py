@@ -63,18 +63,25 @@ if broad.is_dir():
 rej_log = (out / "single_ct_reject.log").read_text()
 assert "at least 2 cell types" in rej_log
 
-# 4. Verify Part 1 M01 + M08 -> Part 2 prepLincs + enrichLincs handoff if executed
-if part1_out is not None:
-    h_log = (out / "part1_handoff.log").read_text()
+# 4. Verify M01 + M08 -> prepLincs -> enrichLincs -> scoreLincs handoff if executed
+handoff_log = out / "part1_handoff.log"
+if part1_out is not None and handoff_log.is_file():
+    h_log = handoff_log.read_text()
     assert "MediCell LINCS run complete." in h_log and "Traceback" not in h_log
     for rel in [
-        "L01_inputs/SLE_pbmc_pos.csv",
+        "L01_inputs/SLE_pbmc_neg.csv",
         "L01_inputs/SLE_pbmc_twas_all.tsv",
         "L01_inputs/pbmc_exp_matrix.csv",
-        "L02_enrichment/LINCS_all_SLE_pbmc_pos.csv",
-        "L02_enrichment/LINCS_sig_SLE_pbmc_pos.csv",
+        "L02_enrichment/LINCS_all_SLE_pbmc_neg.csv",
+        "L02_enrichment/LINCS_sig_SLE_pbmc_neg.csv",
+        "L03_drug_scores/pbmc_SLE_neg.drug_celltype_score.csv",
+        "L03_drug_scores/pbmc_SLE_neg.drug_celltype_score.RData",
     ]:
-        assert (part1_out / rel).is_file(), f"Missing Part 1->2 handoff output: {rel}"
+        p = part1_out / rel
+        assert p.is_file() and p.stat().st_size > 0, f"Missing handoff output: {p}"
+    handoff_scores = read_csv(part1_out / "L03_drug_scores/pbmc_SLE_neg.drug_celltype_score.csv")
+    assert len(handoff_scores) >= 1, "Expected >=1 drug score in TWAS -> LINCS handoff"
+    assert {"CD4T", "B"} <= set(handoff_scores[0].keys()), "Expected CD4T and B columns in handoff score matrix"
 
 print("PASS: LINCS standalone, annotation/scoring, and handoff checks succeeded")
 print("Output:", out)

@@ -1,5 +1,4 @@
 # large test data and results are populated locally, not versioned
-test/data/
 test/results/
 test_run_out/
 run_out/

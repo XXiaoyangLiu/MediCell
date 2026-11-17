@@ -38,7 +38,7 @@ PY
 
 python3 -u medicell.py lincs \
     --output-dir "$OUT/standalone" \
-    --cores 4 \
+    --cores 1 \
     --twas-file "$OUT/fixture/twas.csv" \
     --exp-matrix "$OUT/fixture/exp.csv" \
     --lincs-gmt "$OUT/fixture/custom.gmt" \
@@ -59,7 +59,6 @@ import sys
 
 gmt_path = Path(sys.argv[1])
 fx = Path(sys.argv[2])
-# Pick the first non-BRD named perturbation with >= 12 genes and build a matching TWAS/exp table.
 chosen_genes = []
 all_genes = []
 with gmt_path.open() as f:
@@ -77,7 +76,6 @@ with gmt_path.open() as f:
         if chosen_genes and len(all_genes) >= 80:
             break
 
-# Place chosen_genes at the bottom (lowest positive Z-scores) so fgsea produces NES < 0.
 other_genes = [g for g in all_genes if g not in chosen_genes][:60]
 ranked = other_genes + chosen_genes
 with (fx / "broad_twas.csv").open("w") as f:
@@ -96,7 +94,7 @@ PY
 
     python3 -u medicell.py lincs \
         --output-dir "$OUT/broad" \
-        --cores 4 \
+        --cores 1 \
         --twas-file "$OUT/fixture/broad_twas.csv" \
         --exp-matrix "$OUT/fixture/broad_exp.csv" \
         --lincs-gmt "$BROAD_GMT" \
@@ -120,16 +118,15 @@ if python3 -u medicell.py lincs \
     exit 1
 fi
 
-# 4. If a Part 1 output directory was supplied, test M01 + M08 -> prepLincs -> enrichLincs handoff
-#    (Part 1 smoke fixture has only 1 CT in M08, so scoreLincs must be skipped/rejected).
-if [[ -n "$PART1_OUT" ]]; then
+# 4. If TWAS output and Broad GMTs exist, verify full M01 + M08 -> prepLincs -> enrichLincs -> scoreLincs handoff.
+if [[ -n "$PART1_OUT" && -s "$BROAD_GMT" && -s "$PERT1" && -s "$PERT2" ]]; then
     python3 -u medicell.py lincs \
         --output-dir "$PART1_OUT" \
-        --steps prepLincs,enrichLincs \
-        --cores 2 \
+        --cores 1 \
         --gene-pos test/data/gene_names.csv \
-        --label pbmc --direction pos \
-        --lincs-min-size 1 2>&1 | tee "$OUT/part1_handoff.log"
+        --label pbmc --direction neg \
+        --twas-padj-cutoff 1.0 --lincs-min-size 1 \
+        --lincs-nes-filter all --lincs-sig-cutoff 1.0 2>&1 | tee "$OUT/part1_handoff.log"
 fi
 
 python3 test/check_lincs_results.py "$OUT" "${PART1_OUT:-}"
