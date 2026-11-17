@@ -10,8 +10,6 @@ statistics. Part 2 (`medicell.py lincs`) integrates cell-type TWAS associations
 and expression profiles with LINCS L1000 perturbation signatures (`fgsea`) to
 prioritize candidate drugs per cell type.
 
-Analysis is configured by explicit cell types, PEER factors and model-selection
-parameters. No tissue name or tissue-specific presets are required.
 
 ## Installation
 
