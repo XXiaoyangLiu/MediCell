@@ -52,7 +52,7 @@ conda env create -f envs/imlatools.yml
 
 ## Usage
 
-### 1. Cell-type TWAS (`medicell.py`)
+### 1. Cell-type TWAS
 
 ```bash
 python3 medicell.py --output-dir run_out --cell-type-twas \
@@ -335,7 +335,7 @@ remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 `{panel}` = `--ld-panel-id`. Called helper scripts live in `script/helpers/`;
 the step entry scripts stay in `script/`.
 
-### 2. Therapeutic prioritization with LINCS (`medicell.py lincs`)
+### 2. Therapeutic prioritization with LINCS
 
 Downstream therapeutic prioritization is invoked separately via `medicell.py lincs` (or `medicell.py --lincs`).
 It connects cell-type-resolved TWAS results and cell-type expression profiles
