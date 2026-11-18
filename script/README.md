@@ -16,7 +16,7 @@ where noted) rather than hardcoded local paths.
 
 ## Cell-Type TWAS Pipeline Entrypoints
 
-Invoked by `python3 medicell.py` (using `--all`, `--steps`, `--<step>`, or
+Invoked by `python3 medicell.py` (using `--cell-type-twas`, `--steps`, `--<step>`, or
 positional `<step>`).
 
 | Step (`--<step>`) | Legacy Alias | Script | Conda Env | Parallelism (`--cores`) | Purpose |

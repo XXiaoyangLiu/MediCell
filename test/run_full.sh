@@ -8,7 +8,7 @@ printf 'Output directory: %s\n' "$OUT"
 cp test/data/manifest.json "$OUT/input_manifest.json"
 sed "s|test/data/|$ROOT/test/data/|g" test/data/gwas_manifest.tsv > "$OUT/gwas_manifest.tsv"
 SECONDS=0
-python3 -u medicell.py --all --output-dir "$OUT" \
+python3 -u medicell.py --cell-type-twas --output-dir "$OUT" \
     --cores 1 --training-cores 1 \
     --cell-types CD4T,B --chromosomes 10 --alpha 0.1 \
     --peer-nk 2 --peer-keep 2 --cov-layout samples \

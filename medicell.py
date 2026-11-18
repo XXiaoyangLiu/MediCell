@@ -4,7 +4,7 @@
 All paths are passed to the pipeline scripts via MC_* environment variables.
 Intermediate and final results are written under --output-dir with fixed
 step-based names. Every step runs sequentially and fails fast.
-Use --all (the default) for the full pipeline, or --steps STEP [STEP ...]
+Use --cell-type-twas (the default) to run the cell-type TWAS pipeline, or --steps STEP [STEP ...]
 for a subset in pipeline order (space or comma separated).
 
 Canonical step order:
@@ -20,7 +20,7 @@ The active mode is recorded in M04_gwas/gwas_run.json so M05metal/M05filter/M07
 can resume it when re-run in the same output directory.
 
 Usage example:
-    python3 medicell.py --output-dir ./run_out --all \
+    python3 medicell.py --output-dir ./run_out --cell-type-twas \
         --cell-types B,CD4T,CD8T,NK,Mono,DC --peer-nk 2 --peer-keep 2 \
         --training-population EUR --twas-model-set unfiltered \
         --bulk-tpm bulk_TPM.txt --enigma-ref sc_ref.matrx \
@@ -170,7 +170,10 @@ def parse_args(argv=None):
     p.add_argument("--peer-keep", type=int, default=None,
                    help="PEER factors kept; required explicitly for peerCov")
     mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--all", action="store_true", help="run the full pipeline (default)")
+    mode.add_argument("--cell-type-twas", action="store_true",
+                      help="run the cell-type TWAS pipeline (default when no step selector is given)")
+    mode.add_argument("--all", dest="cell_type_twas", action="store_true",
+                      help=argparse.SUPPRESS)
     mode.add_argument("--steps", nargs="+", metavar="STEP",
                       help="run only these steps, separated by spaces or commas, "
                            "in pipeline order: " + ",".join(ALL_STEPS)
@@ -213,7 +216,7 @@ def parse_args(argv=None):
                       help="pre-extracted 1000G dosage directory "
                            "(skips the extractLD extraction block)")
     data.add_argument("--gwas-summary", default="",
-                      help="pre-QC'd GWAS summary for runTWAS (MarkerName, Allele1, Allele2, Effect, StdErr, P-value; skips alignGWAS/metaGWAS/filterGWAS with --all)")
+                      help="pre-QC'd GWAS summary for runTWAS (MarkerName, Allele1, Allele2, Effect, StdErr, P-value; skips alignGWAS/metaGWAS/filterGWAS with --cell-type-twas)")
 
     gen = p.add_argument_group("input contracts and generalization")
     gen.add_argument("--sample-id-policy", choices=["exact", "legacy-rnames"], default=None,
@@ -275,7 +278,7 @@ def parse_args(argv=None):
     env.add_argument("--gwas-id", default=None,
                      help="trait label used in standard-mode output names and reports "
                           "(the legacy profiles keep their historical output names)")
-    step_flags = p.add_argument_group("step shortcuts (alternative to --all / --steps; e.g. medicell.py --inferExp ...)")
+    step_flags = p.add_argument_group("step shortcuts (alternative to --cell-type-twas / --steps; e.g. medicell.py --inferExp ...)")
     for step in ALL_STEPS:
         step_flags.add_argument("--" + step, dest="flag_" + step, action="store_true",
                                 help="run " + step + ": " + STEP_DESCRIPTIONS[step])
@@ -284,8 +287,8 @@ def parse_args(argv=None):
 
     # -- steps: normalize shortcuts/aliases, validate, deduplicate, pipeline order --
     flagged_steps = [step for step in ALL_STEPS if getattr(args, "flag_" + step)]
-    if flagged_steps and (args.all or args.steps is not None):
-        p.error("step shortcut flags (--" + ",--".join(flagged_steps) + ") cannot be combined with --all or --steps")
+    if flagged_steps and (args.cell_type_twas or args.steps is not None):
+        p.error("step shortcut flags (--" + ",--".join(flagged_steps) + ") cannot be combined with --cell-type-twas or --steps")
 
     args.step_aliases = []
     if flagged_steps:
@@ -924,7 +927,9 @@ def main():
         run_lincs_mode([a for a in sys.argv[1:] if a != "--lincs"])
         return
     argv = sys.argv[1:]
-    if argv and (argv[0] in ALL_STEPS or argv[0] in STEP_ALIASES):
+    if argv and argv[0] == "cell-type-twas":
+        argv = ["--cell-type-twas"] + argv[1:]
+    elif argv and (argv[0] in ALL_STEPS or argv[0] in STEP_ALIASES):
         argv = ["--steps", argv[0]] + argv[1:]
     args = parse_args(argv)
     env_base = os.path.abspath(args.env_base) if args.env_base else ""

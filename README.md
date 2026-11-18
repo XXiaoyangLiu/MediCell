@@ -55,7 +55,7 @@ conda env create -f envs/imlatools.yml
 ### 1. Cell-type TWAS (`medicell.py`)
 
 ```bash
-python3 medicell.py --output-dir run_out --all \
+python3 medicell.py --output-dir run_out --cell-type-twas \
     --cores 4 \
     --cell-types B,CD4T,CD8T,NK,Mono,DC \
     --peer-nk 2 --peer-keep 2 \
@@ -79,7 +79,7 @@ per chromosome (1–22 by default). The covariates file is required for `peerCov
 
 #### Run modes
 
-Use `--all` to run cell-type TWAS (or omit step selectors). To run a
+Use `--cell-type-twas` to run cell-type TWAS (or omit step selectors). To run a
 single step or a subset, use the descriptive step flags (`--inferExp`,
 `--summarizeTWAS`, etc.), positional subcommand (`medicell.py inferExp ...`),
 or `--steps`:
@@ -99,7 +99,7 @@ python3 medicell.py --normExp --peerCov --output-dir run_out --cell-types B \
     --peer-nk 2 --peer-keep 2 --covariates data/covariates.txt
 ```
 
-`--all`, `--steps`, and `--<step>` flags are mutually exclusive (combining
+`--cell-type-twas`, `--steps`, and `--<step>` flags are mutually exclusive (combining
 multiple `--<step>` flags is supported). Selected steps always execute in
 pipeline order, regardless of argument order; duplicates run only once.
 Only selected steps run: prerequisites are **not** run automatically.
@@ -147,10 +147,10 @@ For raw/multi-cohort GWAS inputs, `alignGWAS` / `metaGWAS` / `filterGWAS` (`M05a
 meta-analysis (e.g., combining multiple GWAS cohorts). A pre-QC'd single-study
 GWAS can run either:
 
-- directly with `--all --gwas-summary FILE --gwas-id TRAIT` (automatically skips
+- directly with `--cell-type-twas --gwas-summary FILE --gwas-id TRAIT` (automatically skips
   `alignGWAS`, `metaGWAS`, and `filterGWAS`; `FILE` must include columns
   `MarkerName`, `Allele1`, `Allele2`, `Effect`, `StdErr`, `P-value`), or
-- with `--all --gwas-manifest SINGLE_STUDY.tsv --skip-gwas-meta --gwas-id TRAIT`
+- with `--cell-type-twas --gwas-manifest SINGLE_STUDY.tsv --skip-gwas-meta --gwas-id TRAIT`
   (runs `alignGWAS` to harmonize alleles against `--snp-annot-file` and skips
   `metaGWAS` / `filterGWAS`).
 
@@ -249,7 +249,7 @@ Run control:
 | `--tpm-min` | `normExp` gene filter: min inferred TPM (default 0.1) |
 | `--min-pct` | `normExp` gene filter: min sample fraction, 0–1 (default 0.01) |
 | `--min-samples` | `normExp` gene filter: min sample count floor (default 5) |
-| `--all` | run the full cell-type TWAS pipeline (all 12 TWAS steps; default when no step selector is specified) |
+| `--cell-type-twas` | run the full cell-type TWAS pipeline (all 12 TWAS steps; default when no step selector is specified) |
 | `--steps STEP [STEP ...]` | run a subset in pipeline order; space/comma-separated; old `M01`–`M08` names are aliases |
 | `--<step>` | single-step flags (e.g. `--inferExp`, `--summarizeTWAS`), combinable across steps |
 | `--chromosomes` | comma-separated chromosomes (default 1–22) |
@@ -259,7 +259,7 @@ Run control:
 | `--training-cores` | inner `trainModel` cores per `(cell_type, chr)` job (defaults from `--cores`) |
 | `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip `extractLD` (`M06ld`) extraction |
 | `--gwas-id` | trait label (required for `--gwas-manifest` and standalone `summarizeTWAS` without `gwas_run.json`; auto-recovered from `gwas_run.json` when present) |
-| `--gwas-summary` | pre-QC'd GWAS summary for `runTWAS` (`M07`); automatically skips `alignGWAS`/`metaGWAS`/`filterGWAS` when used with `--all` |
+| `--gwas-summary` | pre-QC'd GWAS summary for `runTWAS` (`M07`); automatically skips `alignGWAS`/`metaGWAS`/`filterGWAS` when used with `--cell-type-twas` |
 | `--skip-gwas-meta` | skip optional `metaGWAS`/`filterGWAS` for a single pre-QC'd study in `--gwas-manifest` |
 
 Environment/tools (defaults match `envs/*.yml` and bundled `tools/`):
