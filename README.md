@@ -74,18 +74,18 @@ python3 medicell.py --output-dir run_out --cell-type-twas \
     --cell-types B,CD4T,CD8T,NK,Mono,DC \
     --peer-nk 2 --peer-keep 2 \
     --training-population POP --gwas-population POP \
-    --bulk-tpm           data/bulk_TPM.txt \
-    --enigma-ref         data/sc_reference_TPM.matrx \
-    --cibersortx-frax    data/CIBERSORTx_fractions.txt \
-    --covariates         data/covariates.txt \
-    --snp-annot-pattern  data/snp_annot.chr{chr}.txt \
-    --genotype-pattern   data/genotype.chr{chr}.txt \
-    --gene-annot         data/gene_annot.parsed.txt \
-    --snp-annot-file     data/snp_annotation.txt \
-    --gwas-manifest      data/gwas_manifest.tsv \
-    --g1000-vcf-pattern  data/1000G/ALL.chr{chr}.phase3...genotypes.vcf.gz \
-    --g1000-samples      data/POP_samples.txt \
-    --gene-pos           data/gene_pos_grch37.82.csv
+    --bulk-tpm           path/to/bulk_TPM.txt \
+    --enigma-ref         path/to/sc_reference_TPM.matrx \
+    --cibersortx-frax    path/to/CIBERSORTx_fractions.txt \
+    --covariates         path/to/covariates.txt \
+    --snp-annot-pattern  path/to/snp_annot.chr{chr}.txt \
+    --genotype-pattern   path/to/genotype.chr{chr}.txt \
+    --gene-annot         path/to/gene_annot.parsed.txt \
+    --snp-annot-file     path/to/snp_annotation.txt \
+    --gwas-manifest      path/to/gwas_manifest.tsv \
+    --g1000-vcf-pattern  path/to/1000G/ALL.chr{chr}.phase3...genotypes.vcf.gz \
+    --g1000-samples      path/to/POP_samples.txt \
+    --gene-pos           path/to/gene_pos_grch37.82.csv
 ```
 
 Every input path pattern takes a `{chr}` placeholder that the driver expands
@@ -101,16 +101,16 @@ or `--steps`:
 ```bash
 # Run only ENIGMA expression inference (M01)
 python3 medicell.py --inferExp --output-dir run_out --cell-types B,CD4T \
-    --bulk-tpm data/bulk_TPM.txt --enigma-ref data/sc_reference_TPM.matrx \
-    --cibersortx-frax data/CIBERSORTx_fractions.txt
+    --bulk-tpm path/to/bulk_TPM.txt --enigma-ref path/to/sc_reference_TPM.matrx \
+    --cibersortx-frax path/to/CIBERSORTx_fractions.txt
 
 # Run only the TWAS summary step (M08), using existing TWAS results in run_out
 python3 medicell.py --summarizeTWAS --output-dir run_out --cell-types B \
-    --gene-pos data/gene_pos_grch37.82.csv
+    --gene-pos path/to/gene_pos_grch37.82.csv
 
 # Combine multiple step flags (or use --steps normExp,peerCov)
 python3 medicell.py --normExp --peerCov --output-dir run_out --cell-types B \
-    --peer-nk 2 --peer-keep 2 --covariates data/covariates.txt
+    --peer-nk 2 --peer-keep 2 --covariates path/to/covariates.txt
 ```
 
 `--cell-type-twas`, `--steps`, and `--<step>` flags are mutually exclusive (combining
@@ -386,7 +386,7 @@ them locally under `data/ref/lincs/` or pass `--lincs-gmt`.
 # 1) Continue from an existing TWAS output directory (reuses inferExp ENIGMA + summarizeTWAS outputs)
 python3 medicell.py lincs \
     --output-dir run_out \
-    --gene-pos data/gene_pos_grch37.82.csv \
+    --gene-pos path/to/gene_pos_grch37.82.csv \
     --label cohort --direction both
 
 # 2) Run standalone from an external TWAS table (CSV/TSV/XLSX) + expression matrix
