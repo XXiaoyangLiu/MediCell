@@ -88,9 +88,6 @@ python3 medicell.py --output-dir run_out --cell-type-twas \
     --gene-pos           path/to/gene_pos_grch37.82.csv
 ```
 
-Every input path pattern takes a `{chr}` placeholder that the driver expands
-per chromosome (1–22 by default). The covariates file is required for `peerCov` (`M02cov`, format below).
-
 #### Run modes
 
 Use `--cell-type-twas` to run cell-type TWAS (or omit step selectors). To run a
