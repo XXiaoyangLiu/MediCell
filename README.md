@@ -19,10 +19,8 @@ perturbations per cell type.
 
 ## Installation
 
-Requirements: a Linux server (`x86_64`) with conda (a recent Miniconda/Miniforge;
-the driver auto-detects `~/miniforge3/bin/conda`, `$CONDA_EXE`, or `conda` on `PATH`).
-Pre-built runtime tools (`ENIGMA`, `PEER`, `METAL`, and `MetaXcan`) are already
-bundled inside the release archive, so no source compilation is required.
+Requirements: an `x86_64` Linux system with `conda`. The software is pre-packaged
+and ready to run directly after unpacking and creating the conda environments.
 
 1. Download and unpack the release archives from GitHub Releases:
 
@@ -51,9 +49,6 @@ conda env create -f envs/imlatools.yml
 | conda env `imlatools` | `envs/imlatools.yml` | Python 3.10 runtime for MetaXcan / S-PrediXcan and `bcftools` |
 | Bundled binaries & libraries | `tools/` | Pre-built `METAL`, `MetaXcan`, `ENIGMA` (`tools/R_libs/R4.4.3`), and `PEER` (`tools/R_libs/r3.6.3`) loaded automatically by `medicell.py` |
 | Reference databases | `data/ref/` | Extracted from `medicell-ref-data.tar.gz` into `MediCell/data/` (`data/ref/lincs/...` for `medicell.py lincs`) |
-
-No `setup.sh` step is needed when using the release archives; once the conda
-environments are created, `python3 medicell.py` runs directly.
 
 ## Usage
 
