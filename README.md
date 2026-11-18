@@ -52,6 +52,8 @@ conda env create -f envs/imlatools.yml
 
 ## Usage
 
+### 1. Cell-type TWAS (`medicell.py`)
+
 ```bash
 python3 medicell.py --output-dir run_out --all \
     --cores 4 \
@@ -75,9 +77,9 @@ python3 medicell.py --output-dir run_out --all \
 Every input path pattern takes a `{chr}` placeholder that the driver expands
 per chromosome (1–22 by default). The covariates file is required for `peerCov` (`M02cov`, format below).
 
-### Run modes
+#### Run modes
 
-Use `--all` for the complete pipeline (or omit step selectors). To run a
+Use `--all` to run cell-type TWAS (or omit step selectors). To run a
 single step or a subset, use the descriptive step flags (`--inferExp`,
 `--summarizeTWAS`, etc.), positional subcommand (`medicell.py inferExp ...`),
 or `--steps`:
@@ -112,7 +114,7 @@ remain valid aliases in `--steps`):
 | `peerCov` | `M02cov` | `M02_DataProcess_covariance_for_db.R` | `--covariates` |
 | `trainModel` | `M03` | `M03_ModelTraining.R` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
 | `buildDB` | `M04db`, `M06` | `M04_Makedb.R` | (uses `trainModel` output) |
-| `alignGWAS` | `M05align`, `M04align` | `M05_DataProcess_GWAS_align4METAL.R` | `--snp-annot-file`, `--gwas-dir` + GWAS mode |
+| `alignGWAS` | `M05align`, `M04align` | `M05_DataProcess_GWAS_align4METAL.R` | `--snp-annot-file`, `--gwas-manifest`, `--gwas-id` |
 | `metaGWAS` *(optional)* | `M05metal`, `M04metal` | `M05_DataProcess_GWAS_metal.sh` | (multi-study meta; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
 | `filterGWAS` *(optional)* | `M05filter`, `M04filter` | `M05_DataProcess_GWAS_metal_filter.R` | (post-meta QC; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
 | `extractLD` | `M06ld`, `M05ld` | `M06_LD.sh` | `--snp-annot-pattern`; also `--g1000-vcf-pattern`, `--g1000-samples` unless `--ld-dosage-dir` |
@@ -124,20 +126,11 @@ Other steps use upstream results and need no additional original data
 arguments. For multiple steps, provide the union of their required inputs.
 Existing tool and environment options still apply.
 
-### GWAS modes
+#### GWAS modes
 
-`alignGWAS` / `metaGWAS` / `filterGWAS` (`M05align`/`M05metal`/`M05filter`) require an **explicit** mode; changing
-`--gwas-id` alone never silently switches what data is analyzed:
+For raw/multi-cohort GWAS inputs, `alignGWAS` / `metaGWAS` / `filterGWAS` (`M05align`/`M05metal`/`M05filter`) use an explicit manifest (`--gwas-manifest`):
 
-- `--gwas-profile sle-legacy-pbmc | sle-legacy-kidney` — bit-exact
-  reproduction of the historical SLE implementation. **This profile
-  reproduces known statistical errors of the old code** (the third study's
-  BETA/SE column mis-projection, the swapped effect-allele declaration in
-  METAL, whitespace-parsing column shifts). It exists so historical results
-  remain reproducible; use it only for that. Its output names are fixed
-  (`SLE_metal_096_917_183…`) and it forces `--gwas-filter-policy legacy`.
-- `--gwas-manifest FILE` — the corrected standard path. `FILE` is a TSV with
-  one row per GWAS study and the exact columns:
+- `--gwas-manifest FILE` — TSV with one row per GWAS study and the exact columns:
 
   ```
   study_id  path  build  effect_scale  chr_col  pos_col  ea_col  oa_col
@@ -147,12 +140,11 @@ Existing tool and environment options still apply.
   `path` must be absolute; `effect_scale` is `linear` or `log_odds`;
   `effect_mode` is `beta_se`, `or_se` (SE of the log-OR) or `or_p` (SE
   back-computed from OR and P); `n_mode` is `none`, `constant` (`n_value`)
-  or `column` (`n_col`). Unused optional columns are left empty. The driver
-  prints a warning when the legacy profile is active; standard runs get the
-  `<gwas_id>_meta` output prefix and filter policy `none` by default.
+  or `column` (`n_col`). Unused optional columns are left empty. Runs produce
+  the `{gwas_id}_meta` output prefix and filter policy `none` by default.
 
 `metaGWAS` and `filterGWAS` are **optional** and only needed for multi-study
-meta-analysis (such as the multi-cohort SLE example). A pre-QC'd single-study
+meta-analysis (e.g., combining multiple GWAS cohorts). A pre-QC'd single-study
 GWAS can run either:
 
 - directly with `--all --gwas-summary FILE --gwas-id TRAIT` (automatically skips
@@ -164,9 +156,9 @@ GWAS can run either:
 
 The active mode is recorded in `M04_gwas/gwas_run.json`, so re-running
 `metaGWAS`/`filterGWAS`/`runTWAS` in the same output directory recovers it.
-`--gwas-id` is a label used in standard-mode output names and reports only.
+`--gwas-id` is a trait label used in output names and reports.
 
-### Explicit analysis configuration
+#### Explicit analysis configuration
 
 - `--cell-types` is always required and must match the reference cell-type names.
 - `--peer-nk` and `--peer-keep` are required only for `peerCov` (`M02cov`). Use `0`/`0`
@@ -181,21 +173,7 @@ or `--gene-annot-format legacy-name-is-id`, respectively. Use separate output
 directories for separate cohorts. `--ld-panel-id` names the LD panel independently
 of the training population.
 
-For comparison with the original analysis, these were the former parameter sets;
-they are no longer selected automatically:
-
-| Original analysis | Cell types | PEER estimated / kept | TWAS model set |
-|---|---|---|---|
-| PBMC | `B,CD4T,CD8T,NK,Mono,DC` | 2 / 2 | `unfiltered` |
-| Glomerulus | `Bcell,Endo,MC,MNP,NK,NKT,Podo,Th_cell,CD8T` | 60 / 15 | `filtered-signif` |
-| Tubule | `Bcell,CD8T,CDICA,CDICB,DCT,LOH,MNP,NK,NKT,PT,Th_cell,Plasmacytoid_DC` | 60 / 11 | `filtered-signif` |
-
-Matching these settings alone does not guarantee identical results: input files,
-GWAS mode, filtering, sample-ID policy and training seed must also match. `summarizeTWAS` (`M08`) omits
-the `tissue` and `peer` label columns; association statistics and per-cell-type
-corrections are unchanged by removing these labels.
-
-### Parameters
+#### Parameters
 
 `--cell-types` and `--output-dir` are always required. Data inputs are required
 according to the selected steps above; tuning options retain their defaults:
@@ -215,7 +193,6 @@ according to the selected steps above; tuning options retain their defaults:
 | `--genotype-pattern` | per-chromosome genotype dosage, with `{chr}` placeholder |
 | `--gene-annot` | gene annotation (TSS-collapsed `start == end`, or with `strand`/`tss` column to resolve TSS) |
 | `--snp-annot-file` | single-file genotype panel SNP annotation (for GWAS align) |
-| `--gwas-dir` | directory with the three SLE GWAS files: `GCST011096_buildGRCh37.tsv`, `GCST90018917_buildGRCh37.tsv.gz`, `GCST90476183_hg19.tsv.gz` (legacy profiles) |
 | `--g1000-vcf-pattern` | 1000 Genomes Phase 3 VCF pattern, with `{chr}` placeholder |
 | `--g1000-samples` | 1000G sample list **matching the GWAS ancestry** (e.g., use 1000G EUR samples for a EUR GWAS, or matched EUR+EAS samples for trans-ancestry EUR+EAS meta-GWAS) |
 | `--gene-pos` | gene position annotation CSV (GRCh37, with gene_id/gene_name columns) |
@@ -235,7 +212,7 @@ Input contracts:
 | `--maf` | MAF threshold for `trainModel` genotypes in `[0, 0.5]` (default `0.01`; manuscript used `0.05`) |
 | `--maf-policy` | `filter` (drop variants `< --maf`) or `verify` (fail if input genotype violates `--maf`) |
 
-#### Covariates file format
+##### Covariates file format
 
 Tab- or space-separated with a header. Two layouts are auto-detected:
 
@@ -272,7 +249,7 @@ Run control:
 | `--tpm-min` | `normExp` gene filter: min inferred TPM (default 0.1) |
 | `--min-pct` | `normExp` gene filter: min sample fraction, 0–1 (default 0.01) |
 | `--min-samples` | `normExp` gene filter: min sample count floor (default 5) |
-| `--all` | run all 12 steps; also the default when no mode is specified |
+| `--all` | run the full cell-type TWAS pipeline (all 12 TWAS steps; default when no step selector is specified) |
 | `--steps STEP [STEP ...]` | run a subset in pipeline order; space/comma-separated; old `M01`–`M08` names are aliases |
 | `--<step>` | single-step flags (e.g. `--inferExp`, `--summarizeTWAS`), combinable across steps |
 | `--chromosomes` | comma-separated chromosomes (default 1–22) |
@@ -296,7 +273,7 @@ Environment/tools (defaults match `envs/*.yml` and bundled `tools/`):
 
 `trainModel` (`M03`) always uses the bundled training core, `script/helpers/gtex_v7_nested_cv_elnet.R`.
 
-### Pipeline steps
+#### Pipeline steps
 
 Executed in dependency order (canonical names; legacy aliases in parentheses):
 
@@ -326,7 +303,7 @@ explicit `gene_name` and `gene_id`. Old 23-column summaries are rejected; rerun
 remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 `{ct}_models.db` is created. Existing cached databases are not deleted.
 
-### Outputs
+#### Outputs
 
 ```
 {output-dir}/
@@ -340,11 +317,9 @@ remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
   M03_models/weights/   Model_training_{ct}_chr{n}_weights.txt
   M06_databases/        {ct}_models_unfiltered.db               all models; required for LD covariance and unfiltered TWAS
                         {ct}_models_filtered_signif.db          gene-filtered models (R^2 > 0.01, CV p < 0.05; default for runTWAS)
-  M04_gwas/             gwas_run.json                           recorded GWAS mode (profile or manifest)
-                        SLE_metal_096_917_1831.tbl              legacy METAL meta-analysis result
-                        SLE_metal_096_917_183_filt.tsv          legacy filtered meta statistics
-                        {gwas_id}_meta1.tbl                     standard-mode METAL result
-                        {gwas_id}_meta_filt.tsv                 standard-mode filtered statistics
+  M04_gwas/             gwas_run.json                           recorded GWAS configuration
+                        {gwas_id}_meta1.tbl                     METAL meta-analysis result
+                        {gwas_id}_meta_filt.tsv                 filtered meta-analysis statistics
   M05_ld/dosage/        chr{n}_{panel}.txt.gz                   1000G panel dosages
   M05_ld/cov_{panel}/   chr{n}.txt.gz                           dosages aligned to the panel
                         {ct}.txt.gz                             LD covariance per cell type
@@ -357,21 +332,10 @@ remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 ```
 
 `{ct}` = cell type, `{n}` = chromosome, `{alpha}` = the `--alpha` value,
-`{panel}` = `--ld-panel-id`. Historical output directory names are unchanged
-so existing caches remain reusable. Called helper scripts live in
-`script/helpers/`; the M0-step entry scripts stay in `script/`.
+`{panel}` = `--ld-panel-id`. Called helper scripts live in `script/helpers/`;
+the step entry scripts stay in `script/`.
 
-## Reproducing historical results
-
-The historical SLE numbers (TWAS, summaries) come from the legacy GWAS
-profile, which preserves the old implementation's known errors. Reproduce
-them with `--gwas-profile sle-legacy-pbmc` (or `sle-legacy-kidney`) and the
-original inputs; do not mix legacy intermediates with standard-mode ones.
-The corrected standard path (`--gwas-manifest`) can legitimately produce
-different statistics for the same studies — that is expected, and the
-difference is the fix.
-
-## Therapeutic prioritization with LINCS (`medicell.py lincs`)
+### 2. Therapeutic prioritization with LINCS (`medicell.py lincs`)
 
 Downstream therapeutic prioritization is invoked separately via `medicell.py lincs` (or `medicell.py --lincs`).
 It connects cell-type-resolved TWAS results and cell-type expression profiles
@@ -402,7 +366,7 @@ via `--lincs-env <env>`. Large
 GMT files (`data/ref/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
 them locally under `data/ref/lincs/` or pass `--lincs-gmt`.
 
-### Quick start
+#### Quick start
 
 ```bash
 # 1) Continue from an existing TWAS output directory (reuses inferExp ENIGMA + summarizeTWAS outputs)
@@ -437,7 +401,7 @@ python3 medicell.py lincs \
     --trait MyTrait --label MyCohort --direction pos
 ```
 
-### Key options (`python3 medicell.py lincs --help`)
+#### Key options (`python3 medicell.py lincs --help`)
 
 | Option | Default | Description |
 |---|---|---|
@@ -455,7 +419,7 @@ python3 medicell.py lincs \
 | `--lincs-sig-col`, `--lincs-sig-cutoff`, `--lincs-nes-filter` | `pval`, `0.05`, `neg` | Significance filter (`pval` or `padj`) and NES direction (`neg`, `pos`, `all`). |
 | `--top-n`, `--lincs-rank-by`, `--exclude-pert-pattern` | `50`, `pval`, `^BRD-\|trt_sh\.css` | Top perturbations kept in `L03`; pass `--exclude-pert-pattern ""` to keep all. |
 
-### LINCS outputs
+#### LINCS outputs
 
 ```text
 <output-dir>/
