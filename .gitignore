@@ -10,3 +10,6 @@ data/ref/*
 !data/ref/README.md
 release/
 tools/R_libs/
+Results/out/
+__pycache__/
+*.py[cod]

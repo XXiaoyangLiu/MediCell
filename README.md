@@ -446,6 +446,51 @@ python3 medicell.py lincs \
                     {label}_{trait}_{dir}.drug_celltype_score.csv   final drug x cell-type score matrix
 ```
 
+## Testing
+
+The repository includes an end-to-end smoke test suite under `test/` built on a
+compact, de-identified chromosome 10 dataset (`test/data/`: 50 samples, 150
+genes, 197 SNPs, 2 GRCh37 GWAS studies, and 30 1000 Genomes EUR+EAS samples).
+
+### Running the full test suite
+
+Ensure the three conda environments (`R4.4.3`, `r3.6.3`, `imlatools`) and
+bundled `tools/` are available, then run from the repository root:
+
+```bash
+bash test/run_full.sh
+```
+
+`test/run_full.sh` creates a temporary output directory (`test/results/full.XXXXXX`)
+and runs two stages sequentially:
+
+1. **Cell-type TWAS (`M01`–`M08`)**: runs `python3 -u medicell.py --cell-type-twas`
+   in single-core mode (`--cores 1 --training-cores 1`) on `CD4T,B` and
+   chromosome `10`, then validates all outputs with `test/check_results.py`
+   (`test/data/manifest.json` SHA-256 checksums, all 12 pipeline steps, SQLite
+   models, LD covariances, S-PrediXcan outputs, and `M08_summary/` tables).
+2. **LINCS prioritization (`L01`–`L03`)**: invokes `bash test/run_lincs.sh <twas_out_dir>`
+   and validates outputs with `test/check_lincs_results.py` (standalone
+   directional `prepLincs -> enrichLincs -> scoreLincs` score symmetry,
+   single-cell-type rejection, and—when `data/ref/lincs/` is unpacked—Broad
+   `LINCS_PRL_top250_human.gmt` annotation/scoring and the full `M01` + `M08`
+   to `L01`–`L03` handoff).
+
+### Running LINCS tests standalone
+
+To verify only the LINCS workflow without running the TWAS pipeline:
+
+```bash
+bash test/run_lincs.sh
+```
+
+Without `data/ref/lincs/` unpacked, standalone mode still exercises the
+self-contained synthetic GMT fixture and single-cell-type error guard; with
+`data/ref/lincs/` present, it additionally tests Broad GMT enrichment and
+Phase 1/2 perturbation annotation. Passing an existing TWAS output directory as
+an argument (`bash test/run_lincs.sh <twas_out_dir>`) also runs the end-to-end
+handoff check.
+
 ## References
 
 - ENIGMA: deconvolution of bulk RNA-seq with single-cell reference
