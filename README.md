@@ -14,13 +14,31 @@ perturbations per cell type.
 
 ## Workflow
 
-**1. Cell-Type TWAS (`medicell.py`)**
+```mermaid
+flowchart TD
+    subgraph TWAS["1. Cell-type TWAS: medicell.py"]
+        A["inferExp<br/>Bulk deconvolution (ENIGMA)"] --> B["normExp<br/>Expression normalization"]
+        B --> C["peerCov<br/>PEER factors + covariates"]
+        C --> D["trainModel<br/>Elastic-net GReX training"]
+        D --> E["buildDB<br/>Weight databases"]
+        F["alignGWAS<br/>GWAS alignment"] --> G["metaGWAS<br/>METAL meta-analysis"]
+        G --> H["filterGWAS<br/>Variant filtering"]
+        I["extractLD<br/>1000G dosages"] --> J["buildLD<br/>LD covariance"]
+        E --> J
+        E --> K["runTWAS<br/>S-PrediXcan"]
+        H --> K
+        J --> K
+        K --> L["summarizeTWAS<br/>FDR / Bonferroni summary"]
+    end
 
-`Bulk & Single-Cell Expression (inferExp)` → `Expression Normalization (normExp)` → `PEER & Covariates (peerCov)` → `Elastic-Net GReX Training (trainModel)` → `Weight Databases (buildDB)` → `GWAS Alignment & Meta-Analysis (alignGWAS → metaGWAS → filterGWAS)` → `1000G LD Covariance (extractLD → buildLD)` → `S-PrediXcan Association (runTWAS)` → `Cell-Type TWAS Summary (summarizeTWAS)`
+    subgraph LINCS["2. Therapeutic prioritization: medicell.py lincs"]
+        M["prepLincs<br/>Directional TWAS + expression matrix"] --> N["enrichLincs<br/>LINCS L1000 fgsea"]
+        N --> O["scoreLincs<br/>Drug x cell-type scores"]
+    end
 
-**2. Therapeutic Prioritization (`medicell.py lincs`)**
-
-`TWAS Summary + Deconvolved Expression (prepLincs)` → `LINCS L1000 fgsea Enrichment (enrichLincs)` → `Drug × Cell-Type Specificity Scoring (scoreLincs)`
+    A --> M
+    L --> M
+```
 
 
 ## Installation
