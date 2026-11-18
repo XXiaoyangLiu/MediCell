@@ -12,6 +12,17 @@ perturbational signatures (`fgsea`) to prioritize candidate therapeutic
 perturbations per cell type.
 
 
+## Workflow
+
+**1. Cell-Type TWAS (`medicell.py`)**
+
+`Bulk & Single-Cell Expression (inferExp)` → `Expression Normalization (normExp)` → `PEER & Covariates (peerCov)` → `Elastic-Net GReX Training (trainModel)` → `Weight Databases (buildDB)` → `GWAS Alignment & Meta-Analysis (alignGWAS → metaGWAS → filterGWAS)` → `1000G LD Covariance (extractLD → buildLD)` → `S-PrediXcan Association (runTWAS)` → `Cell-Type TWAS Summary (summarizeTWAS)`
+
+**2. Therapeutic Prioritization (`medicell.py lincs`)**
+
+`TWAS Summary + Deconvolved Expression (prepLincs)` → `LINCS L1000 fgsea Enrichment (enrichLincs)` → `Drug × Cell-Type Specificity Scoring (scoreLincs)`
+
+
 ## Installation
 
 Requirements: a Linux server (`x86_64`) with conda (a recent Miniconda/Miniforge;
