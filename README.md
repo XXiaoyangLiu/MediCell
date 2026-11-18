@@ -64,6 +64,10 @@ conda env create -f envs/imlatools.yml
   - **1000 Genomes Phase 3 VCFs & sample panel** (`--g1000-vcf-pattern`, `--g1000-samples` matched to GWAS ancestry): [1000 Genomes Phase 3 FTP/HTTPS release](https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/) (including per-chromosome VCFs and `integrated_call_samples_v3.20130502.ALL.panel`).
   - **Gene annotations & ID mapping** (`--gene-annot`, `--gene-pos`): [GENCODE Human](https://www.gencodegenes.org/human/) ([GRCh37 Release 19](https://www.gencodegenes.org/human/release_19.html)) or Ensembl archive matching your assembly (`GRCh37` / `GRCh38`).
 
+#### Quick start
+
+Run the full cell-type TWAS pipeline end-to-end:
+
 ```bash
 python3 medicell.py --output-dir run_out --cell-type-twas \
     --cores 4 \
