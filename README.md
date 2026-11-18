@@ -54,6 +54,16 @@ conda env create -f envs/imlatools.yml
 
 ### 1. Cell-type TWAS
 
+#### Required data
+
+- **Cohort & sequencing data (self-prepared):**
+  - **Bulk RNA-seq** expression matrix (`--bulk-tpm`, TPM) and **matched individual genotypes** (`--genotype-pattern`, dosage `[0, 2]` + SNP annotations `--snp-annot-pattern` / `--snp-annot-file`) from the same individuals, along with **sample covariates** (`--covariates`, e.g., PCs, sex, age, batch).
+  - **Tissue-matched scRNA-seq reference** (`--enigma-ref`, cell-type-aggregated TPM) and **cell-type fractions** (`--cibersortx-frax`, externally estimated via [CIBERSORTx](https://cibersortx.stanford.edu/)).
+  - **GWAS summary statistics** (`--gwas-manifest` or `--gwas-summary`) for the target trait/disease (e.g., from the [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) or published studies).
+- **Public reference data (download & match genome build / GWAS ancestry):**
+  - **1000 Genomes Phase 3 VCFs & sample panel** (`--g1000-vcf-pattern`, `--g1000-samples` matched to GWAS ancestry): [1000 Genomes Phase 3 FTP/HTTPS release](https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/) (including per-chromosome VCFs and `integrated_call_samples_v3.20130502.ALL.panel`).
+  - **Gene annotations & ID mapping** (`--gene-annot`, `--gene-pos`): [GENCODE Human](https://www.gencodegenes.org/human/) ([GRCh37 Release 19](https://www.gencodegenes.org/human/release_19.html)) or Ensembl archive matching your assembly (`GRCh37` / `GRCh38`).
+
 ```bash
 python3 medicell.py --output-dir run_out --cell-type-twas \
     --cores 4 \
