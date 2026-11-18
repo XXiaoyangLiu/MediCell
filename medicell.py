@@ -186,7 +186,7 @@ def parse_args(argv=None):
     data.add_argument("--enigma-ref", default="",
                       help="single-cell reference matrix (TPM, aggregated by cell type)")
     data.add_argument("--cibersortx-frax", default="",
-                      help="CIBERSORTx adjusted cell-fraction output")
+                      help="CIBERSORTx cell-fraction output estimated externally and passed to ENIGMA")
     data.add_argument("--covariates", default="",
                       help="covariates txt (required by peerCov auto-detects "
                            "samples-x-covariates and legacy covariates-x-samples layouts; "
@@ -206,15 +206,14 @@ def parse_args(argv=None):
                       help="1000 Genomes Phase 3 VCF pattern with {chr} placeholder "
                            "(not needed when --ld-dosage-dir is given)")
     data.add_argument("--g1000-samples", default="",
-                      help="1000G sample list file for the LD panel")
+                      help="1000G sample list matching the GWAS ancestry (e.g., 1000G EUR samples for EUR GWAS)")
     data.add_argument("--gene-pos", default="",
                       help="gene position annotation CSV (GRCh37, gene_id/gene_name columns)")
     data.add_argument("--ld-dosage-dir", default="",
                       help="pre-extracted 1000G dosage directory "
                            "(skips the extractLD extraction block)")
     data.add_argument("--gwas-summary", default="",
-                      help="explicit filtered GWAS summary for runTWAS "
-                           "(overrides the pipeline-generated path)")
+                      help="pre-QC'd GWAS summary for runTWAS (MarkerName, Allele1, Allele2, Effect, StdErr, P-value; skips alignGWAS/metaGWAS/filterGWAS with --all)")
 
     gen = p.add_argument_group("input contracts and generalization")
     gen.add_argument("--sample-id-policy", choices=["exact", "legacy-rnames"], default=None,
@@ -233,10 +232,12 @@ def parse_args(argv=None):
                      help="minor allele frequency threshold for trainModel genotype variants in [0, 0.5] (default 0.01)")
     gen.add_argument("--maf-policy", choices=["filter", "verify"], default="filter",
                      help="filter: drop variants with MAF < --maf; verify: fail if input genotype violates --maf (default filter)")
-    gen.add_argument("--ld-panel-id", default="EUR_EAS",
-                     help="LD panel id used in dosage/covariance file names (default EUR_EAS)")
-    gen.add_argument("--twas-model-set", choices=["unfiltered", "filtered-signif"], default=None,
-                     help="weight database choice; required explicitly for buildDB and runTWAS")
+    gen.add_argument("--gwas-population", default=None,
+                     help="GWAS ancestry label (e.g. EUR, EAS, EUR_EAS); defaults --ld-panel-id when omitted")
+    gen.add_argument("--ld-panel-id", default=None,
+                     help="LD panel id matched to GWAS ancestry (defaults to --gwas-population, else EUR_EAS)")
+    gen.add_argument("--twas-model-set", choices=["unfiltered", "filtered-signif"], default="filtered-signif",
+                     help="weight database for runTWAS (default filtered-signif: R2 > 0.01 and CV p < 0.05; buildDB always keeps *_models_unfiltered.db for buildLD)")
     gen.add_argument("--cores", type=int, default=None,
                      help="unified parallel cores/workers across all pipeline steps (default 4)")
     gen.add_argument("--seed", type=int, default=None,
@@ -245,7 +246,7 @@ def parse_args(argv=None):
     gen.add_argument("--training-cores", type=int, default=None,
                      help="inner trainModel cores per (cell_type, chr) job (defaults from --cores; forced to 1 with --seed)")
 
-    gwas = p.add_argument_group("GWAS mode (required for alignGWAS/metaGWAS/filterGWAS)")
+    gwas = p.add_argument_group("GWAS mode (required when running alignGWAS/metaGWAS/filterGWAS)")
     gwas_mode = gwas.add_mutually_exclusive_group()
     gwas_mode.add_argument("--gwas-profile", choices=list(LEGACY_GWAS_PROFILES), default=None,
                            help="historical SLE reproduction profile; reproduces the "
@@ -257,6 +258,8 @@ def parse_args(argv=None):
     gwas.add_argument("--gwas-filter-policy", choices=["none", "legacy"], default=None,
                       help="post-meta filtering (default: legacy for --gwas-profile, "
                            "none for --gwas-manifest)")
+    gwas.add_argument("--skip-gwas-meta", action="store_true",
+                      help="skip optional metaGWAS and filterGWAS when running alignGWAS on a single pre-QC'd GWAS study in --gwas-manifest")
 
     env = p.add_argument_group("environment and tools")
     env.add_argument("--env-base", default="",
@@ -288,7 +291,12 @@ def parse_args(argv=None):
     if flagged_steps:
         args.steps = flagged_steps
     elif args.steps is None:
-        args.steps = ALL_STEPS.copy()
+        if args.gwas_summary:
+            args.steps = [step for step in ALL_STEPS if step not in GWAS_STEPS]
+        elif args.skip_gwas_meta:
+            args.steps = [step for step in ALL_STEPS if step not in ("metaGWAS", "filterGWAS")]
+        else:
+            args.steps = ALL_STEPS.copy()
     else:
         selected = []
         for value in args.steps:
@@ -347,6 +355,7 @@ def parse_args(argv=None):
             chrs.append(int(token))
     args.chromosomes = chrs
     for name, value in (("--gwas-id", args.gwas_id),
+                        ("--gwas-population", args.gwas_population),
                         ("--ld-panel-id", args.ld_panel_id)):
         if value is not None and not re.fullmatch(SAFE_NAME, value):
             p.error(name + " must be a safe output label ([A-Za-z0-9_.-])")
@@ -391,10 +400,28 @@ def parse_args(argv=None):
     if missing:
         p.error("selected steps require: " + ", ".join(missing))
 
-    # -- GWAS mode: explicit profile / manifest, or a recorded prior mode --
-    if args.gwas_summary and set(args.steps) & GWAS_STEPS:
-        p.error("--gwas-summary is for running runTWAS on an external summary; it "
-                "cannot be combined with the GWAS steps")
+    # -- GWAS mode: external summary, single-study aligned, multi-study meta, or recorded prior mode --
+    if args.gwas_summary:
+        if args.gwas_profile or args.gwas_manifest:
+            p.error("--gwas-summary cannot be combined with --gwas-profile or --gwas-manifest")
+        if args.skip_gwas_meta:
+            p.error("--skip-gwas-meta cannot be combined with --gwas-summary")
+        if set(args.steps) & GWAS_STEPS:
+            p.error("--gwas-summary cannot be combined with alignGWAS, metaGWAS, or filterGWAS")
+        if not os.path.isfile(args.gwas_summary) or os.path.getsize(args.gwas_summary) == 0:
+            p.error("--gwas-summary file not found or empty: " + args.gwas_summary)
+        import gzip as _gzip
+        opener = _gzip.open if args.gwas_summary.endswith(".gz") else open
+        with opener(args.gwas_summary, "rt") as _gf:
+            _hdr = _gf.readline().rstrip("\r\n").split()
+        _req_cols = {"MarkerName", "Allele1", "Allele2", "Effect", "StdErr", "P-value"}
+        if not (_req_cols <= set(_hdr)):
+            p.error("--gwas-summary header must contain columns: " + ", ".join(sorted(_req_cols)))
+    if args.skip_gwas_meta:
+        if args.gwas_profile:
+            p.error("--skip-gwas-meta applies only to single-study --gwas-manifest (not --gwas-profile)")
+        if set(args.steps) & {"metaGWAS", "filterGWAS"}:
+            p.error("--skip-gwas-meta cannot be combined with metaGWAS or filterGWAS")
     gwas_dir = os.path.join(os.path.abspath(args.output_dir), "M04_gwas")
     run_meta = os.path.join(gwas_dir, "gwas_run.json")
     profile, manifest = args.gwas_profile, args.gwas_manifest
@@ -435,6 +462,14 @@ def parse_args(argv=None):
                         p.error("Explicit GWAS manifest no longer exists")
                 saved_build = saved.get("genome_build", "GRCh37")
                 saved_policy = saved.get("filter_policy")
+                saved_pop = saved.get("gwas_population") or ""
+                if args.gwas_population is not None and saved_pop and args.gwas_population != saved_pop:
+                    p.error("--gwas-population conflicts with recorded GWAS inputs; use a new output directory")
+                if args.gwas_population is None and saved_pop:
+                    args.gwas_population = saved_pop
+                saved_skip = bool(saved.get("skip_meta", False))
+                if args.skip_gwas_meta and not saved_skip:
+                    p.error("--skip-gwas-meta conflicts with recorded meta-analysis mode; use a new output directory")
                 if (saved_build not in ("GRCh37", "GRCh38")
                         or saved_policy not in ("none", "legacy")
                         or (profile and saved_policy != "legacy")):
@@ -471,10 +506,21 @@ def parse_args(argv=None):
         args.gwas_prefix = LEGACY_GWAS_PREFIX
         filter_policy = "legacy"
     elif manifest:
-        args.gwas_prefix = args.gwas_id + "_meta"
+        is_single = args.skip_gwas_meta or (
+            saved is not None and bool(saved.get("skip_meta", False))
+        ) or ("alignGWAS" in args.steps and "metaGWAS" not in args.steps and "filterGWAS" not in args.steps)
+        if is_single and (not args.gwas_mode_recovered or os.path.isfile(manifest)):
+            import csv as _csv
+            with open(manifest, "r", newline="") as _mf:
+                _rows = list(_csv.DictReader(_mf, delimiter="\t"))
+            if len(_rows) != 1:
+                p.error("skipping metaGWAS/filterGWAS requires a single-study --gwas-manifest (found %d studies)" % len(_rows))
+        args.gwas_prefix = args.gwas_id + ("_single" if is_single else "_meta")
+        args.skip_meta_active = is_single
         filter_policy = "none"
     else:
         args.gwas_prefix = ""
+        args.skip_meta_active = False
         filter_policy = ""
     if args.gwas_filter_policy is not None:
         if profile and args.gwas_filter_policy != "legacy":
@@ -488,6 +534,7 @@ def parse_args(argv=None):
     args.gwas_filt = (os.path.abspath(args.gwas_summary) if args.gwas_summary
                       else (os.path.join(gwas_dir, args.gwas_prefix + "_filt.tsv")
                             if args.gwas_prefix else ""))
+    args.ld_panel_id = args.ld_panel_id or args.gwas_population or "EUR_EAS"
     args.gwas_profile_active = profile
     args.gwas_manifest_active = manifest
     return args
@@ -954,6 +1001,8 @@ def main():
             "metal_tbl": args.metal_tbl,
             "filtered": args.gwas_filt,
             "filter_policy": args.gwas_filter_policy,
+            "gwas_population": args.gwas_population or "",
+            "skip_meta": bool(getattr(args, "skip_meta_active", False)),
         })
 
     enigma_rdata = os.path.join(dirs["m01"],
@@ -990,6 +1039,8 @@ def main():
         "MC_GWAS_FILTER_POLICY": args.gwas_filter_policy,
         "MC_METAL_TBL": args.metal_tbl,
         "MC_GWAS_FILT": args.gwas_filt,
+        "MC_GWAS_SINGLE_OUT": (args.gwas_filt if getattr(args, "skip_meta_active", False) else ""),
+        "MC_GWAS_POPULATION": args.gwas_population or "",
         "MC_G1000_VCF_PATTERN": input_path(args.g1000_vcf_pattern),
         "MC_G1000_SAMPLES": input_path(args.g1000_samples),
         "MC_GENE_POS": input_path(args.gene_pos),

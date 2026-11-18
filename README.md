@@ -57,7 +57,7 @@ python3 medicell.py --output-dir run_out --all \
     --cores 4 \
     --cell-types B,CD4T,CD8T,NK,Mono,DC \
     --peer-nk 2 --peer-keep 2 \
-    --training-population EUR --twas-model-set unfiltered \
+    --training-population EUR --gwas-population EUR_EAS \
     --bulk-tpm           data/bulk_TPM.txt \
     --enigma-ref         data/sc_reference_TPM.matrx \
     --cibersortx-frax    data/CIBERSORTx_fractions.txt \
@@ -113,8 +113,8 @@ remain valid aliases in `--steps`):
 | `trainModel` | `M03` | `M03_ModelTraining.R` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
 | `buildDB` | `M04db`, `M06` | `M04_Makedb.R` | (uses `trainModel` output) |
 | `alignGWAS` | `M05align`, `M04align` | `M05_DataProcess_GWAS_align4METAL.R` | `--snp-annot-file`, `--gwas-dir` + GWAS mode |
-| `metaGWAS` | `M05metal`, `M04metal` | `M05_DataProcess_GWAS_metal.sh` | (uses `alignGWAS` output) |
-| `filterGWAS` | `M05filter`, `M04filter` | `M05_DataProcess_GWAS_metal_filter.R` | (uses `metaGWAS` output) |
+| `metaGWAS` *(optional)* | `M05metal`, `M04metal` | `M05_DataProcess_GWAS_metal.sh` | (multi-study meta; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
+| `filterGWAS` *(optional)* | `M05filter`, `M04filter` | `M05_DataProcess_GWAS_metal_filter.R` | (post-meta QC; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
 | `extractLD` | `M06ld`, `M05ld` | `M06_LD.sh` | `--snp-annot-pattern`; also `--g1000-vcf-pattern`, `--g1000-samples` unless `--ld-dosage-dir` |
 | `buildLD` | `M06cov`, `M05cov` | `M06_Makeld.sh` | (uses `buildDB` + `extractLD` output) |
 | `runTWAS` | `M07` | `M07_TWAS.sh` | (uses `buildDB` + `buildLD` + `filterGWAS` / `--gwas-summary`) |
@@ -151,18 +151,27 @@ Existing tool and environment options still apply.
   prints a warning when the legacy profile is active; standard runs get the
   `<gwas_id>_meta` output prefix and filter policy `none` by default.
 
+`metaGWAS` and `filterGWAS` are **optional** and only needed for multi-study
+meta-analysis (such as the multi-cohort SLE example). A pre-QC'd single-study
+GWAS can run either:
+
+- directly with `--all --gwas-summary FILE --gwas-id TRAIT` (automatically skips
+  `alignGWAS`, `metaGWAS`, and `filterGWAS`; `FILE` must include columns
+  `MarkerName`, `Allele1`, `Allele2`, `Effect`, `StdErr`, `P-value`), or
+- with `--all --gwas-manifest SINGLE_STUDY.tsv --skip-gwas-meta --gwas-id TRAIT`
+  (runs `alignGWAS` to harmonize alleles against `--snp-annot-file` and skips
+  `metaGWAS` / `filterGWAS`).
+
 The active mode is recorded in `M04_gwas/gwas_run.json`, so re-running
-`metaGWAS`/`filterGWAS`/`runTWAS` in the same output directory recovers it. `runTWAS` can also
-run on any external summary with `--gwas-summary FILE` (cannot be combined
-with the GWAS steps). `--gwas-id` is a label used in standard-mode output
-names and reports only.
+`metaGWAS`/`filterGWAS`/`runTWAS` in the same output directory recovers it.
+`--gwas-id` is a label used in standard-mode output names and reports only.
 
 ### Explicit analysis configuration
 
 - `--cell-types` is always required and must match the reference cell-type names.
 - `--peer-nk` and `--peer-keep` are required only for `peerCov` (`M02cov`). Use `0`/`0`
   for known covariates only; no PEER factors are inferred in this mode.
-- `--twas-model-set unfiltered|filtered-signif` is required for `buildDB` (`M04db`) and `runTWAS` (`M07`).
+- `--twas-model-set filtered-signif|unfiltered` (default `filtered-signif`) selects the database for `runTWAS` (`M07`). `buildDB` always retains `{ct}_models_unfiltered.db` for `buildLD` SNP lookup and generates `{ct}_models_filtered_signif.db` by filtering whole genes (`R^2 > 0.01` and CV `p < 0.05`, dropping unqualified genes entirely).
 - `--training-population` is optional metadata for `buildDB` (default `unspecified`).
 
 Sample IDs default to exact matching and gene annotations default to the
@@ -196,7 +205,7 @@ according to the selected steps above; tuning options retain their defaults:
 | `--output-dir` | run directory; all results are written here |
 | `--bulk-tpm` | bulk TPM expression matrix (genes x samples) |
 | `--enigma-ref` | single-cell reference matrix (TPM, aggregated by cell type) |
-| `--cibersortx-frax` | CIBERSORTx adjusted cell-fraction output |
+| `--cibersortx-frax` | externally estimated CIBERSORTx cell-type fractions passed into `inferExp` (ENIGMA) instead of internal fraction estimation |
 | `--covariates` | covariates txt, first column = sample ID, then covariate columns (required for `peerCov`; format below) |
 | `--cat-covs` | comma-separated categorical covariate columns to dummy-encode (default none) |
 | `--min-level-count` | drop categorical levels with fewer samples (default 5) |
@@ -208,7 +217,7 @@ according to the selected steps above; tuning options retain their defaults:
 | `--snp-annot-file` | single-file genotype panel SNP annotation (for GWAS align) |
 | `--gwas-dir` | directory with the three SLE GWAS files: `GCST011096_buildGRCh37.tsv`, `GCST90018917_buildGRCh37.tsv.gz`, `GCST90476183_hg19.tsv.gz` (legacy profiles) |
 | `--g1000-vcf-pattern` | 1000 Genomes Phase 3 VCF pattern, with `{chr}` placeholder |
-| `--g1000-samples` | 1000G sample list for the LD panel (EUR+EAS by default; pass an EUR-only list for a European LD panel) |
+| `--g1000-samples` | 1000G sample list **matching the GWAS ancestry** (e.g., use 1000G EUR samples for a EUR GWAS, or matched EUR+EAS samples for trans-ancestry EUR+EAS meta-GWAS) |
 | `--gene-pos` | gene position annotation CSV (GRCh37, with gene_id/gene_name columns) |
 
 Input contracts:
@@ -220,8 +229,9 @@ Input contracts:
 | `--gene-annot-format` | `standard` (default) or explicitly selected `legacy-name-is-id` |
 | `--genome-build` | `GRCh37` (default) or `GRCh38`; declared for this cohort's coordinates, no liftover is performed |
 | `--training-population` | optional population label stored with the trained models (default `unspecified`) |
-| `--ld-panel-id` | LD panel id used in dosage/covariance file names (default `EUR_EAS`) |
-| `--twas-model-set` | `unfiltered` or `filtered-signif`; required for `buildDB`/`runTWAS` |
+| `--gwas-population` | GWAS ancestry label (e.g. `EUR`, `EAS`, `EUR_EAS`); sets default `--ld-panel-id` when omitted |
+| `--ld-panel-id` | LD panel id matched to GWAS ancestry (defaults to `--gwas-population` if set, else `EUR_EAS`) |
+| `--twas-model-set` | `filtered-signif` (default; gene-level filter `R^2 > 0.01` & CV `p < 0.05`) or `unfiltered` for `runTWAS`; `buildDB` always retains `unfiltered` DB for `buildLD` |
 | `--maf` | MAF threshold for `trainModel` genotypes in `[0, 0.5]` (default `0.01`; manuscript used `0.05`) |
 | `--maf-policy` | `filter` (drop variants `< --maf`) or `verify` (fail if input genotype violates `--maf`) |
 
@@ -272,7 +282,8 @@ Run control:
 | `--training-cores` | inner `trainModel` cores per `(cell_type, chr)` job (defaults from `--cores`) |
 | `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip `extractLD` (`M06ld`) extraction |
 | `--gwas-id` | trait label (required for `--gwas-manifest` and standalone `summarizeTWAS` without `gwas_run.json`; auto-recovered from `gwas_run.json` when present) |
-| `--gwas-summary` | explicit filtered GWAS summary for `runTWAS` (`M07`) |
+| `--gwas-summary` | pre-QC'd GWAS summary for `runTWAS` (`M07`); automatically skips `alignGWAS`/`metaGWAS`/`filterGWAS` when used with `--all` |
+| `--skip-gwas-meta` | skip optional `metaGWAS`/`filterGWAS` for a single pre-QC'd study in `--gwas-manifest` |
 
 Environment/tools (defaults match `envs/*.yml` and bundled `tools/`):
 
@@ -291,15 +302,15 @@ Executed in dependency order (canonical names; legacy aliases in parentheses):
 
 | Step | What it does |
 |---|---|
-| `inferExp` (`M01`) | ENIGMA trace-norm deconvolution with CIBERSORTx fractions |
+| `inferExp` (`M01`) | ENIGMA trace-norm deconvolution using externally estimated CIBERSORTx cell fractions |
 | `normExp` (`M02exp`) | filter low-expression genes (TPM > `--tpm-min` in `max(--min-pct x N, --min-samples)` samples), per-gene inverse-normal transform per cell type |
 | `peerCov` (`M02cov`) | PEER factors + covariates for model training (parallelized across cell types) |
 | `trainModel` (`M03`) | nested-CV elastic-net GReX models (parallelized across cell types x chromosomes and genes) |
-| `buildDB` (`M04db`, `M06`) | SQLite weight databases for S-PrediXcan (parallelized across cell types) |
-| `alignGWAS` (`M05align`, `M04align`) | align GWAS studies to the genotype panel (allele flips, effect direction) |
-| `metaGWAS` (`M05metal`, `M04metal`) | METAL inverse-variance meta-analysis |
-| `filterGWAS` (`M05filter`, `M04filter`) | post-meta filtering (policy-dependent) |
-| `extractLD` (`M06ld`, `M05ld`) | 1000G dosages aligned to the panel annotation (parallelized across chromosomes) |
+| `buildDB` (`M04db`, `M06`) | build `{ct}_models_unfiltered.db` (kept for `buildLD` SNP lookup) and gene-filtered `{ct}_models_filtered_signif.db` (`R^2 > 0.01`, CV `p < 0.05`; whole failed genes removed) |
+| `alignGWAS` (`M05align`, `M04align`) | align GWAS study/studies to the genotype panel (and write direct TWAS input when meta is skipped) |
+| `metaGWAS` (`M05metal`, `M04metal`) | *(optional)* METAL inverse-variance meta-analysis for multi-study GWAS |
+| `filterGWAS` (`M05filter`, `M04filter`) | *(optional)* post-meta heterogeneity/direction filtering (policy-dependent) |
+| `extractLD` (`M06ld`, `M05ld`) | 1000G dosages for GWAS-ancestry-matched samples aligned to the panel annotation (parallelized across chromosomes) |
 | `buildLD` (`M06cov`, `M05cov`) | LD covariance matrices per cell type (parallelized across cell types) |
 | `runTWAS` (`M07`) | S-PrediXcan association per cell type (parallelized across cell types) |
 | `summarizeTWAS` (`M08`) | per-cell-type FDR / Bonferroni result summary |
@@ -328,7 +339,7 @@ remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
                         Model_training_{ct}_chr{n}_summary.txt
   M03_models/weights/   Model_training_{ct}_chr{n}_weights.txt
   M06_databases/        {ct}_models_unfiltered.db               all models; required for LD covariance and unfiltered TWAS
-                        {ct}_models_filtered_signif.db          only when --twas-model-set filtered-signif is selected
+                        {ct}_models_filtered_signif.db          gene-filtered models (R^2 > 0.01, CV p < 0.05; default for runTWAS)
   M04_gwas/             gwas_run.json                           recorded GWAS mode (profile or manifest)
                         SLE_metal_096_917_1831.tbl              legacy METAL meta-analysis result
                         SLE_metal_096_917_183_filt.tsv          legacy filtered meta statistics

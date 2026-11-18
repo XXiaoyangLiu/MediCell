@@ -46,6 +46,9 @@ for ct in cell_types:
         assert c.execute("SELECT n_samples,population FROM sample_info").fetchall() == [(n_samples, "EUR")]
         assert c.execute("SELECT count(*) FROM extra").fetchone()[0] >= 1
         assert c.execute("SELECT count(*) FROM weights").fetchone()[0] >= 1
+    with sqlite3.connect(str(out / f"M06_databases/{ct}_models_filtered_signif.db")) as cf:
+        assert cf.execute("SELECT n_samples,population FROM sample_info").fetchall() == [(n_samples, "EUR")]
+        assert cf.execute("SELECT count(*) FROM extra WHERE \"pred.perf.R2\" <= 0.01 OR \"pred.perf.pval\" >= 0.05").fetchone()[0] == 0
     with gzip.open(str(out / f"M05_ld/cov_MINI_EUR_EAS/{ct}.txt.gz"), "rt") as f:
         header = f.readline().split()
         covariance = [dict(zip(header, line.split())) for line in f]

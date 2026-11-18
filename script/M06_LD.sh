@@ -21,7 +21,7 @@ BCF="${MC_BCFTOOLS:-bcftools}"
 if [[ -n "${MC_BCF_PLUGINS:-}" ]]; then export BCFTOOLS_PLUGINS="$MC_BCF_PLUGINS"; fi
 
 export HELPER DOSAGE_DIR COV_DIR ANNOT_PATTERN PANEL WORK BCF
-export MC_G1000_VCF_PATTERN MC_G1000_SAMPLES MC_GENOME_BUILD MC_LD_SKIP_EXTRACT
+export MC_G1000_VCF_PATTERN MC_G1000_SAMPLES MC_GENOME_BUILD MC_LD_SKIP_EXTRACT MC_GWAS_POPULATION
 
 extract_chr() {
     local chr="$1"
@@ -54,8 +54,8 @@ align_chr() {
     local ANNOT="${ANNOT_PATTERN/\{chr\}/$chr}"
     python3 "$HELPER" align "$ANNOT" "$DOSAGE_DIR/chr${chr}_${PANEL}.txt.gz" "$cwork/chr${chr}.txt.gz" "$chr"
     mv "$cwork/chr${chr}.txt.gz" "$COV_DIR/chr${chr}.txt.gz"
-    printf 'panel_id\t%s\ngenome_build\t%s\naf_semantics\tbefore_sample_subset\nsample_order\t%s\n' \
-        "$PANEL" "${MC_GENOME_BUILD:?}" "${MC_LD_SKIP_EXTRACT:-0}: 1=preextracted order not independently verifiable; 0=VCF/requested verified" > "$COV_DIR/chr${chr}.metadata.tsv"
+    printf 'panel_id\t%s\ngwas_population\t%s\ngenome_build\t%s\naf_semantics\tbefore_sample_subset\nsample_order\t%s\n' \
+        "$PANEL" "${MC_GWAS_POPULATION:-unspecified}" "${MC_GENOME_BUILD:?}" "${MC_LD_SKIP_EXTRACT:-0}: 1=preextracted order not independently verifiable; 0=VCF/requested verified" > "$COV_DIR/chr${chr}.metadata.tsv"
 }
 export -f align_chr
 
