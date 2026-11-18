@@ -73,7 +73,7 @@ python3 medicell.py --output-dir run_out --cell-type-twas \
     --cores 4 \
     --cell-types B,CD4T,CD8T,NK,Mono,DC \
     --peer-nk 2 --peer-keep 2 \
-    --training-population EUR --gwas-population EUR_EAS \
+    --training-population POP --gwas-population POP \
     --bulk-tpm           data/bulk_TPM.txt \
     --enigma-ref         data/sc_reference_TPM.matrx \
     --cibersortx-frax    data/CIBERSORTx_fractions.txt \
@@ -84,7 +84,7 @@ python3 medicell.py --output-dir run_out --cell-type-twas \
     --snp-annot-file     data/snp_annotation.txt \
     --gwas-manifest      data/gwas_manifest.tsv \
     --g1000-vcf-pattern  data/1000G/ALL.chr{chr}.phase3...genotypes.vcf.gz \
-    --g1000-samples      data/EUR_EAS_samples.txt \
+    --g1000-samples      data/POP_samples.txt \
     --gene-pos           data/gene_pos_grch37.82.csv
 ```
 
