@@ -14,30 +14,43 @@ perturbations per cell type.
 
 ## Workflow
 
+Rounded boxes show input datasets (`--flags`), and rectangles show pipeline steps.
+
 ```mermaid
 flowchart TD
     subgraph TWAS["1. Cell-type TWAS: medicell.py"]
-        A["inferExp<br/>Bulk deconvolution (ENIGMA)"] --> B["normExp<br/>Expression normalization"]
+        IN1(["Bulk TPM + scRNA-seq ref + cell fractions<br/>--bulk-tpm, --enigma-ref, --cibersortx-frax"]) --> A["inferExp<br/>Bulk deconvolution (ENIGMA)"]
+        A --> B["normExp<br/>Expression normalization"]
+        IN2(["Sample covariates<br/>--covariates"]) --> C
         B --> C["peerCov<br/>PEER factors + covariates"]
+        IN3(["Genotypes + SNP/gene annotations<br/>--genotype-pattern, --snp-annot-pattern, --gene-annot"]) --> D
         C --> D["trainModel<br/>Elastic-net GReX training"]
         D --> E["buildDB<br/>Weight databases"]
-        F["alignGWAS<br/>GWAS alignment"] --> G["metaGWAS<br/>METAL meta-analysis"]
+
+        IN4(["GWAS summary stats + SNP panel<br/>--gwas-manifest / --gwas-dir, --snp-annot-file"]) --> F["alignGWAS<br/>GWAS alignment"]
+        F --> G["metaGWAS<br/>METAL meta-analysis"]
         G --> H["filterGWAS<br/>Variant filtering"]
-        I["extractLD<br/>1000G dosages"] --> J["buildLD<br/>LD covariance"]
+
+        IN5(["1000G VCF + sample list + SNP annotations<br/>--g1000-vcf-pattern, --g1000-samples, --snp-annot-pattern"]) --> I["extractLD<br/>1000G dosages"]
+        I --> J["buildLD<br/>LD covariance"]
         E --> J
+
         E --> K["runTWAS<br/>S-PrediXcan"]
         H --> K
         J --> K
+        IN6(["Gene ID/name mapping<br/>--gene-pos"]) --> L
         K --> L["summarizeTWAS<br/>FDR / Bonferroni summary"]
     end
 
     subgraph LINCS["2. Therapeutic prioritization: medicell.py lincs"]
         M["prepLincs<br/>Directional TWAS + expression matrix"] --> N["enrichLincs<br/>LINCS L1000 fgsea"]
+        IN7(["LINCS L1000 GMT + pert metadata<br/>data/ref/lincs/, --lincs-gmt, --lincs-pert-phase1/2"]) --> N
         N --> O["scoreLincs<br/>Drug x cell-type scores"]
     end
 
     A --> M
     L --> M
+    IN6 --> M
 ```
 
 
