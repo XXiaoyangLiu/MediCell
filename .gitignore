@@ -13,3 +13,4 @@ tools/R_libs/
 Results/out/
 __pycache__/
 *.py[cod]
+Results/*.log
