@@ -117,20 +117,20 @@ Only selected steps run: prerequisites are **not** run automatically.
 
 Canonical step names:
 
-| Step (`--<step>`) | Script | Required data arguments |
-|---|---|---|
-| `inferExp` | `M01_ENIGMA.R` | `--bulk-tpm`, `--enigma-ref`, `--cibersortx-frax` |
-| `normExp` | `M02_DataProcess_exp_fordb.R` | (uses `inferExp` output) |
-| `peerCov` | `M02_DataProcess_covariance_for_db.R` | `--covariates` |
-| `trainModel` | `M03_ModelTraining.R` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
-| `buildDB` | `M04_Makedb.R` | (uses `trainModel` output) |
-| `alignGWAS` | `M05_DataProcess_GWAS_align4METAL.R` | `--snp-annot-file`, `--gwas-manifest`, `--gwas-id` |
-| `metaGWAS` *(optional)* | `M05_DataProcess_GWAS_metal.sh` | (multi-study meta; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
-| `filterGWAS` *(optional)* | `M05_DataProcess_GWAS_metal_filter.R` | (post-meta QC; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
-| `extractLD` | `M06_LD.sh` | `--snp-annot-pattern`; also `--g1000-vcf-pattern`, `--g1000-samples` unless `--ld-dosage-dir` |
-| `buildLD` | `M06_Makeld.sh` | (uses `buildDB` + `extractLD` output) |
-| `runTWAS` | `M07_TWAS.sh` | (uses `buildDB` + `buildLD` + `filterGWAS` / `--gwas-summary`) |
-| `summarizeTWAS` | `M08_ResultStatistic.R` | `--gene-pos` |
+| Step (`--<step>`) | Required data arguments |
+|---|---|
+| `inferExp` | `--bulk-tpm`, `--enigma-ref`, `--cibersortx-frax` |
+| `normExp` | (uses `inferExp` output) |
+| `peerCov` | `--covariates` |
+| `trainModel` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
+| `buildDB` | (uses `trainModel` output) |
+| `alignGWAS` | `--snp-annot-file`, `--gwas-manifest`, `--gwas-id` |
+| `metaGWAS` *(optional)* | (multi-study meta; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
+| `filterGWAS` *(optional)* | (post-meta QC; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
+| `extractLD` | `--snp-annot-pattern`; also `--g1000-vcf-pattern`, `--g1000-samples` unless `--ld-dosage-dir` |
+| `buildLD` | (uses `buildDB` + `extractLD` output) |
+| `runTWAS` | (uses `buildDB` + `buildLD` + `filterGWAS` / `--gwas-summary`) |
+| `summarizeTWAS` | `--gene-pos` |
 
 Other steps use upstream results and need no additional original data
 arguments. For multiple steps, provide the union of their required inputs.
@@ -164,7 +164,7 @@ GWAS can run either:
   (runs `alignGWAS` to harmonize alleles against `--snp-annot-file` and skips
   `metaGWAS` / `filterGWAS`).
 
-The active mode is recorded in `M04_gwas/gwas_run.json`, so re-running
+The active GWAS configuration is recorded under `{output-dir}/`, so re-running
 `metaGWAS`/`filterGWAS`/`runTWAS` in the same output directory recovers it.
 `--gwas-id` is a trait label used in output names and reports.
 
@@ -315,35 +315,21 @@ remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 
 #### Outputs
 
-```
-{output-dir}/
-  M01_deconvolution/    enigma.cse.trace_alpha_{alpha}.RData    deconvolved expression array
-                        myenigma_alpha_{alpha}.RData           fitted ENIGMA object
-  M02_expression/       {ct}_transformed_expression.txt         filtered + INT expression, samples x genes, sample IDs retained
-  M02_covariates/       {ct}_covariates.txt                     covariates used by trainModel
-                        {ct}_peer_res.RData                     raw PEER factors
-  M03_models/summary/   Model_training_{ct}_chr{n}_model_summaries.txt
-                        Model_training_{ct}_chr{n}_summary.txt
-  M03_models/weights/   Model_training_{ct}_chr{n}_weights.txt
-  M06_databases/        {ct}_models_unfiltered.db               all models; required for LD covariance and unfiltered TWAS
-                        {ct}_models_filtered_signif.db          gene-filtered models (R^2 > 0.01, CV p < 0.05; default for runTWAS)
-  M04_gwas/             gwas_run.json                           recorded GWAS configuration
-                        {gwas_id}_meta1.tbl                     METAL meta-analysis result
-                        {gwas_id}_meta_filt.tsv                 filtered meta-analysis statistics
-  M05_ld/dosage/        chr{n}_{panel}.txt.gz                   1000G panel dosages
-  M05_ld/cov_{panel}/   chr{n}.txt.gz                           dosages aligned to the panel
-                        {ct}.txt.gz                             LD covariance per cell type
-  M07_twas/             {ct}.csv                                per-cell-type S-PrediXcan associations
-                        {ct}.log
-  M08_summary/          allcelltype_result.csv                   all associations with FDR / Bonferroni columns
-                        Bonfsig_allcelltype_result.csv          Bonferroni-significant genes
-                        FDRsig_allcelltype_result.csv           FDR-significant genes
-                        BonFDRsig_allcelltype_result.csv        union of both
-```
+All outputs are organized by stage into subdirectories under `{output-dir}/`:
+
+| Stage | Key output files | Description |
+|---|---|---|
+| Deconvolution (`inferExp`) | `enigma.cse.trace_alpha_{alpha}.RData`, `myenigma_alpha_{alpha}.RData` | Deconvolved expression array and fitted ENIGMA object |
+| Expression & covariates (`normExp`, `peerCov`) | `{ct}_transformed_expression.txt`, `{ct}_covariates.txt`, `{ct}_peer_res.RData` | Filtered + INT expression (`samples x genes`), model covariates, and raw PEER factors |
+| Model training (`trainModel`) | `Model_training_{ct}_chr{n}_model_summaries.txt`, `_summary.txt`, `_weights.txt` | Per-chromosome elastic-net model summaries and SNP weights |
+| Prediction databases (`buildDB`) | `{ct}_models_unfiltered.db`, `{ct}_models_filtered_signif.db` | SQLite databases (all models for LD covariance and unfiltered TWAS; `R^2 > 0.01`, `CV p < 0.05` filtered models for `runTWAS`) |
+| GWAS processing (`alignGWAS`, `metaGWAS`, `filterGWAS`) | `gwas_run.json`, `{gwas_id}_meta1.tbl`, `{gwas_id}_meta_filt.tsv` | Recorded GWAS configuration, METAL meta-analysis output, and filtered GWAS statistics |
+| LD reference (`extractLD`, `buildLD`) | `chr{n}_{panel}.txt.gz`, `chr{n}.txt.gz`, `{ct}.txt.gz` | Extracted and panel-aligned 1000G dosages and per-cell-type LD covariances |
+| TWAS (`runTWAS`) | `{ct}.csv`, `{ct}.log` | Per-cell-type S-PrediXcan associations and logs |
+| Summary (`summarizeTWAS`) | `allcelltype_result.csv`, `Bonfsig_allcelltype_result.csv`, `FDRsig_allcelltype_result.csv`, `BonFDRsig_allcelltype_result.csv` | Combined TWAS summary across cell types with FDR and Bonferroni significance tables |
 
 `{ct}` = cell type, `{n}` = chromosome, `{alpha}` = the `--alpha` value,
-`{panel}` = `--ld-panel-id`. Called helper scripts live in `script/helpers/`;
-the step entry scripts stay in `script/`.
+`{panel}` = `--ld-panel-id`.
 
 ### 2. Therapeutic prioritization with LINCS
 
@@ -352,24 +338,22 @@ It connects cell-type-resolved TWAS results and cell-type expression profiles
 with LINCS L1000 perturbation signatures (`fgsea`) to score candidate compounds
 for each cell type:
 
-1. **`prepLincs` (`script/L01_lincs_prepare.R`)**: Splits TWAS summary
+1. **`prepLincs`**: Splits TWAS summary
    statistics by z-score sign (`pos`: `zscore > 0`, `neg`: `zscore < 0`) and
    builds a gene-symbol x cell-type expression matrix (either from `--exp-matrix`
    or by averaging `inferExp` ENIGMA `enigma.cse.test` across samples per cell type).
-2. **`enrichLincs` (`script/L02_lincs_enrichment.R`)**: Runs `fgsea` on
+2. **`enrichLincs`**: Runs `fgsea` on
    the ranked directional TWAS genes against `data/ref/lincs/LINCS_PRL_top250_human.gmt`
    (or a custom `--lincs-gmt`), annotates hits with L1000 Phase 1/2 perturbation
    metadata (`GSE92742` and `GSE70138` in `data/ref/lincs/`), and filters hits by
    significance and NES sign (default `NES < 0`, `pval < 0.05`).
-3. **`scoreLincs` (`script/L03_lincs_drug_score.sh`)**: Selects the top
+3. **`scoreLincs`**: Selects the top
    perturbations per run, extracts their leading-edge genes and per-cell-type
    TWAS z-scores, computes cross-cell-type expression specificity (`expZscore`),
    and sums `RankScore = |TWAS_zscore| * expZscore` over each drug's
    leading-edge genes to produce a drug x cell-type prioritization matrix.
 
-Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
-`lincsTissueSpecific.R`, `formatLeadingSpecific.pl`, `formatZscoreSpecific.pl`,
-`getZscoreSpecificMatrix.R`). The `R4.4.3` environment defined in `envs/R4.4.3.yml` includes `fgsea`,
+The `R4.4.3` environment defined in `envs/R4.4.3.yml` includes `fgsea`,
 `dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs) required by
 LINCS therapeutic prioritization, selected automatically (`R4.4.3` / `r_4.6.1`) or
 via `--lincs-env <env>`. Large
@@ -415,14 +399,14 @@ python3 medicell.py lincs \
 
 | Option | Default | Description |
 |---|---|---|
-| `--output-dir` | required | Output root (may reuse a TWAS `--output-dir` containing `M01_deconvolution` and `M08_summary`). |
+| `--output-dir` | required | Output root (may reuse an existing TWAS `--output-dir` to read its ENIGMA deconvolution and TWAS summary outputs). |
 | `--cores` | `4` | Unified parallel worker/core budget across all steps (`--training-cores` / `--lincs-cores` still work as overrides). |
 | `--steps` / `--<step>` | `prepLincs,enrichLincs,scoreLincs` | Steps to run (defaults to `prepLincs,scoreLincs` with `--lincs-sig-csv`). |
-| `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |
+| `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from the recorded GWAS metadata in `--output-dir` if present. |
 | `--label` / `--tissue` | `cohort` | Cohort/compartment label used in output file names (no tissue presets). |
 | `--direction` | `pos` | TWAS z-score direction: `pos` (`>0`), `neg` (`<0`), or `both`. |
 | `--cell-types` | all | Optional comma/space-separated subset of cell types (`scoreLincs` requires `>= 2`). |
-| `--twas-file` | `M08_summary/...` | TWAS summary table (`.csv`, `.tsv`, `.txt`, or `.xlsx` with `--twas-sheet`). |
+| `--twas-file` | from TWAS summary | TWAS summary table (defaults to `allcelltype_result.csv` or `FDRsig_allcelltype_result.csv` in `--output-dir`; supports `.csv`, `.tsv`, `.txt`, or `.xlsx` with `--twas-sheet`). |
 | `--twas-gene-col`, `--twas-zscore-col`, `--twas-padj-col`, `--twas-celltype-col` | auto-detect | Explicit column names if your TWAS table uses non-standard headers. |
 | `--exp-matrix` | from `inferExp` | Pre-built gene-symbol x cell-type CSV (rows = genes, columns = cell types). |
 | `--lincs-gmt` | `data/ref/lincs/LINCS_PRL_top250_human.gmt` | Perturbation/gene-set GMT file (`--lincs-pert-phase1/2 ""` disables extra annotation). |
@@ -431,20 +415,13 @@ python3 medicell.py lincs \
 
 #### LINCS outputs
 
-```text
-<output-dir>/
-  L01_inputs/       {trait}_{label}_{dir}.csv          directional TWAS subset for fgsea
-                    {trait}_{label}_twas_all.tsv       normalized Gene/CellType/Zscore table
-                    {label}_exp_matrix.csv             gene x cell-type expression matrix
-  L02_enrichment/   LINCS_all_{trait}_{label}_{dir}.csv  all fgsea-tested perturbations
-                    LINCS_sig_{trait}_{label}_{dir}.csv  filtered LINCS hits
-  L03_drug_scores/  {label}_{trait}_{dir}.SpeciGenes.txt
-                    {label}_{trait}_{dir}.LeadingGenesPool.txt
-                    {label}_{trait}_{dir}.LeadingGenesDrugPairs.txt
-                    {label}_{trait}_{dir}.twas_zscore.txt
-                    {label}_{trait}_{dir}.drug_celltype_score.RData
-                    {label}_{trait}_{dir}.drug_celltype_score.csv   final drug x cell-type score matrix
-```
+Outputs are organized by stage under `<output-dir>/`:
+
+| Stage | Key output files | Description |
+|---|---|---|
+| Prepared inputs (`prepLincs`) | `{trait}_{label}_{dir}.csv`, `{trait}_{label}_twas_all.tsv`, `{label}_exp_matrix.csv` | Directional TWAS subset for `fgsea`, normalized `Gene`/`CellType`/`Zscore` table, and gene x cell-type expression matrix |
+| Perturbation enrichment (`enrichLincs`) | `LINCS_all_{trait}_{label}_{dir}.csv`, `LINCS_sig_{trait}_{label}_{dir}.csv` | All `fgsea`-tested perturbations and filtered LINCS hits |
+| Drug scoring (`scoreLincs`) | `{label}_{trait}_{dir}.SpeciGenes.txt`, `.LeadingGenesPool.txt`, `.LeadingGenesDrugPairs.txt`, `.twas_zscore.txt`, `.drug_celltype_score.RData`, `.drug_celltype_score.csv` | Top drug leading-edge gene sets, extracted TWAS z-scores, and final drug x cell-type score matrix |
 
 ## Testing
 
@@ -464,17 +441,17 @@ bash test/run_full.sh
 `test/run_full.sh` creates a temporary output directory (`test/results/full.XXXXXX`)
 and runs two stages sequentially:
 
-1. **Cell-type TWAS (`M01`–`M08`)**: runs `python3 -u medicell.py --cell-type-twas`
+1. **Cell-type TWAS**: runs `python3 -u medicell.py --cell-type-twas`
    in single-core mode (`--cores 1 --training-cores 1`) on `CD4T,B` and
    chromosome `10`, then validates all outputs with `test/check_results.py`
    (`test/data/manifest.json` SHA-256 checksums, all 12 pipeline steps, SQLite
-   models, LD covariances, S-PrediXcan outputs, and `M08_summary/` tables).
-2. **LINCS prioritization (`L01`–`L03`)**: invokes `bash test/run_lincs.sh <twas_out_dir>`
+   models, LD covariances, S-PrediXcan outputs, and TWAS summary tables).
+2. **LINCS prioritization**: invokes `bash test/run_lincs.sh <twas_out_dir>`
    and validates outputs with `test/check_lincs_results.py` (standalone
    directional `prepLincs -> enrichLincs -> scoreLincs` score symmetry,
    single-cell-type rejection, and—when `data/ref/lincs/` is unpacked—Broad
-   `LINCS_PRL_top250_human.gmt` annotation/scoring and the full `M01` + `M08`
-   to `L01`–`L03` handoff).
+   `LINCS_PRL_top250_human.gmt` annotation/scoring and the full TWAS-to-LINCS
+   handoff).
 
 ### Running LINCS tests standalone
 
