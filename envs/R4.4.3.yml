@@ -1,6 +1,7 @@
 name: R4.4.3
 channels:
   - https://conda.anaconda.org/conda-forge
+  - https://conda.anaconda.org/bioconda
 dependencies:
   - r-base=4.4.3
   - r-dplyr
@@ -12,4 +13,22 @@ dependencies:
   - r-reshape2
   - r-doparallel
   - r-foreach
-  - r-remotes
+  - r-mass
+  - r-ggplot2
+  - r-magrittr
+  - r-nnls
+  - r-plyr
+  - r-purrr
+  - r-tidyr
+  - r-corpcor
+  - r-matrixstats
+  - r-e1071
+  - r-cowplot
+  - r-tibble
+  - r-vctrs
+  - r-readxl
+  - bioconductor-s4vectors
+  - bioconductor-singlecellexperiment
+  - bioconductor-summarizedexperiment
+  - bioconductor-sva
+  - bioconductor-fgsea

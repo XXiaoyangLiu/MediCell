@@ -1,0 +1,3 @@
+study_id	path	build	effect_scale	chr_col	pos_col	ea_col	oa_col	effect_mode	effect_col	se_col	p_col	eaf_col	n_mode	n_value	n_col
+bentham	test/data/gwas_bentham.tsv	GRCh37	log_odds	chr	pos	ea	oa	beta_se	beta	se	p		none		
+jiang	test/data/gwas_jiang.tsv	GRCh37	log_odds	chr	pos	ea	oa	beta_se	beta	se	p		none		

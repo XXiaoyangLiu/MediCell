@@ -118,3 +118,22 @@ fwrite(studies, file.path(out,"gwas_studies.tsv"), sep="\t", quote=FALSE)
 cc <- rbindlist(counts)
 if (panel_dropped) cc <- rbind(cc, data.table(study_id="_panel", effect_mode="", input=0, selected=0, dropped_pos=0, dropped_alleles=0, dropped_beta=0, dropped_or_p=0, palindromic_dropped=0, unmatched=0, matched=0, flipped=0, invalid_p=0, invalid_freq=0, invalid_n=0, panel_dropped=panel_dropped))
 fwrite(cc, file.path(out,"gwas_normalization_counts.tsv"), sep="\t")
+single_out <- Sys.getenv("MC_GWAS_SINGLE_OUT")
+if (nzchar(single_out)) {
+  if (nrow(m) != 1L) fail("single-study direct GWAS output requires exactly 1 study in manifest")
+  norm1 <- fread(studies$path[1], sep="\t", header=TRUE)
+  pval <- norm1$P
+  miss_p <- is.na(pval)
+  if (any(miss_p)) {
+    pval[miss_p] <- 2 * pnorm(-abs(norm1$BETA[miss_p] / norm1$SE[miss_p]))
+  }
+  direct <- data.table(
+    MarkerName=norm1$SNP,
+    Allele1=norm1$A1,
+    Allele2=norm1$A2,
+    Effect=norm1$BETA,
+    StdErr=norm1$SE,
+    `P-value`=pval
+  )
+  fwrite(direct, single_out, sep="\t", na="NA", quote=FALSE)
+}

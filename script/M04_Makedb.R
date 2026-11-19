@@ -15,7 +15,7 @@ if (any(!grepl("^[0-9]+$", chr_text))) stop("MC_CHROMS must be CSV integers")
 chr_list <- sort(as.integer(chr_text))
 if (anyDuplicated(chr_list) || any(!chr_list %in% 1:22) || anyDuplicated(celltypes) ||
     any(!grepl("^[A-Za-z0-9_.-]+$", celltypes))) stop("Invalid chromosome/celltype selection")
-model_set <- required("MC_TWAS_MODEL_SET")
+model_set <- Sys.getenv("MC_TWAS_MODEL_SET", "filtered-signif")
 if (!model_set %in% c("unfiltered", "filtered-signif")) stop("Invalid MC_TWAS_MODEL_SET")
 population <- Sys.getenv("MC_TRAIN_POPULATION", "unspecified")
 if (!nzchar(population)) stop("Declare MC_TRAIN_POPULATION or unspecified")
@@ -43,7 +43,9 @@ indexes <- function(conn, table) {
   dbExecute(conn, paste0("CREATE INDEX gene_model_summary ON ", table, " (gene)"))
 }
 dir.create(db_dir, recursive=TRUE, showWarnings=FALSE)
-for (ct in celltypes) {
+cores <- suppressWarnings(as.integer(Sys.getenv("MC_CORES", "4")))
+if (is.na(cores) || cores < 1L) cores <- 1L
+build_ct_db <- function(ct) {
   filename <- function(dir, chr, suffix) file.path(dir, paste0("Model_training_", ct, "_chr", chr, "_", suffix, ".txt"))
   parts <- lapply(chr_list, function(chr) read_summary(filename(summary_dir, chr, "model_summaries")))
   model_summaries <- bind_rows(parts) %>% rename(gene=gene_name)
@@ -82,8 +84,8 @@ for (ct in celltypes) {
   if (anyDuplicated(mapping$rsid) || anyDuplicated(mapping$varID) || anyDuplicated(weights[c("gene", "varID")])) stop("Variant mapping collision/duplicate weights")
   weights$rsid <- weights$varID
   significant <- model_summaries %>% filter(zscore_pval < 0.05, rho_avg_squared > 0.01)
-  model_sets <- list(unfiltered=model_summaries)
-  if (model_set == "filtered-signif") model_sets$filtered_signif <- significant
+  # Retain unfiltered DB for buildLD SNP selection and gene-filtered DB (R2 > 0.01, CV p < 0.05) for TWAS.
+  model_sets <- list(unfiltered=model_summaries, filtered_signif=significant)
   targets <- file.path(db_dir, paste0(ct, "_models_", names(model_sets), ".db"))
   if (any(file.exists(targets))) stop("Refusing existing database output: ", ct)
   construction <- tiss_summary %>% select(chrom, cv_seed) %>% rename(chromosome=chrom)
@@ -109,4 +111,14 @@ for (ct in celltypes) {
                         value=c(build, population, "standard", paste(chr_list, collapse=","))),
               file.path(db_dir, paste0(ct, "_metadata.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
   cat(ct, ":", nrow(model_summaries), "models;", nrow(significant), "significant;", nrow(weights), "weights\n")
+  paste(ct, ":", nrow(model_summaries), "models;", nrow(significant), "significant;", nrow(weights), "weights")
 }
+res_db <- parallel::mclapply(celltypes, function(ct) try(build_ct_db(ct), silent = TRUE),
+                             mc.cores = min(cores, length(celltypes)))
+failed_db <- vapply(res_db, inherits, logical(1), "try-error")
+if (any(failed_db)) {
+  stop("M04db failed for ", paste(celltypes[failed_db], collapse = ", "), ": ",
+       paste(unlist(res_db[failed_db]), collapse = "
+"))
+}
+for (msg in unlist(res_db)) cat(msg, "\n")

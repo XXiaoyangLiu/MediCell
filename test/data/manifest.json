@@ -1,0 +1,101 @@
+{
+  "purpose": "De-identified chr10 random-sample test dataset for end-to-end TWAS + LINCS verification",
+  "seed": 2026,
+  "chromosome": 10,
+  "discovery_sample_count": 50,
+  "sample_id_anonymization": "S001..S050",
+  "bulk_reference_genes": 150,
+  "reference_cell_types": [
+    "Mono",
+    "NK",
+    "CD4T",
+    "B",
+    "CD8T",
+    "DC"
+  ],
+  "analysis_cell_types": [
+    "CD4T",
+    "B"
+  ],
+  "target_genes": {
+    "ENSG00000204161": "C10orf128",
+    "ENSG00000180817": "PPA1",
+    "ENSG00000170430": "MGMT",
+    "ENSG00000151632": "AKR1C2",
+    "ENSG00000166275": "C10orf32",
+    "ENSG00000185736": "ADARB2",
+    "ENSG00000057608": "GDI2",
+    "ENSG00000165730": "STOX1",
+    "ENSG00000107796": "ACTA2",
+    "ENSG00000035403": "VCL",
+    "ENSG00000107771": "CCSER2",
+    "ENSG00000148834": "GSTO1",
+    "ENSG00000078114": "NEBL",
+    "ENSG00000151640": "DPYSL4"
+  },
+  "training_variant_count": 197,
+  "ld_sample_count": 30,
+  "ld_composition": "15 EUR + 15 EAS (random sample, seed=2026)",
+  "files": {
+    "bulk_tpm.tsv": {
+      "bytes": 126095,
+      "sha256": "8c81d30e1bf85f7e4c958aa44d6a3fcc0fb86461a6a337a905e96c2811ee621c"
+    },
+    "covariates.tsv": {
+      "bytes": 4542,
+      "sha256": "1d1e49387cb87721389e45e079f49f9fbdebf3604cac97d27cb6266f7ffd3407"
+    },
+    "fractions.tsv": {
+      "bytes": 5593,
+      "sha256": "a9d5932740479eba5af30f166ec8e4bea3b0b95e2f8976c21103de76fe0aa429"
+    },
+    "gene_annot.tsv": {
+      "bytes": 996,
+      "sha256": "a9a8a2baad0345c7096f924b6e2cd0ef30a6f8c6123e8e4ad6d4b1220b64326d"
+    },
+    "gene_names.csv": {
+      "bytes": 331,
+      "sha256": "de6dcce29e7663620127762d8b1084dcfb9f54b64f00d5001851a589ec45ed95"
+    },
+    "genotype.chr10.txt": {
+      "bytes": 36481,
+      "sha256": "7a11099f9d023046d5d190eb1a92589c248445b699e5e8a51cc96992d85a008b"
+    },
+    "gwas_bentham.tsv": {
+      "bytes": 13562,
+      "sha256": "cf74baa06b722fc85ededc4dfe5ee1888af9c90d3f74687b1b6e7e7b52bbdc6c"
+    },
+    "gwas_jiang.tsv": {
+      "bytes": 8692,
+      "sha256": "e43b86f74a01cca22f31d4db5ff31494ba32b80d477e02c1e062819f0c806973"
+    },
+    "gwas_manifest.tsv": {
+      "bytes": 306,
+      "sha256": "623a4378d06c36e2826032d682d41f3c3acda0f054a4fe97163c4d3f1ac26e58"
+    },
+    "gwas_panel.tsv": {
+      "bytes": 9577,
+      "sha256": "953cddeb12ca65ac757cd17b797446f652cbed384e9ddd428a49a0f784d21689"
+    },
+    "ld_samples.txt": {
+      "bytes": 240,
+      "sha256": "fa46f0e150eb2da2a10a6b375695a7671053d2bfedc8d713d7d1d17e0de22070"
+    },
+    "reference.chr10.vcf.gz": {
+      "bytes": 11588,
+      "sha256": "d452719c992e2592889058955cf9ad3763ce301d6246f46357c52d94decac156"
+    },
+    "reference.chr10.vcf.gz.tbi": {
+      "bytes": 1607,
+      "sha256": "e6c61d11dfd7968c0d4469f7ca724bf17abde4d1a5d1191062ee0003a5a85d32"
+    },
+    "reference_tpm.tsv": {
+      "bytes": 17741,
+      "sha256": "0024e2664c00de47ce46363103a976ba04ff63fd36fa2feccc3fbef94ae9f245"
+    },
+    "snp_annot.chr10.txt": {
+      "bytes": 9573,
+      "sha256": "b0c7ecae8dd051ddb3a43708b98c2091930d941c1bf46daeef336f7b198ba32d"
+    }
+  }
+}

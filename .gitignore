@@ -1,8 +1,16 @@
 # large test data and results are populated locally, not versioned
-test/data/
 test/results/
 test_run_out/
 run_out/
 tools/
 test/attempts/
 test/*.log
+data/lincs/*.gmt
+data/ref/*
+!data/ref/README.md
+release/
+tools/R_libs/
+Results/out/
+__pycache__/
+*.py[cod]
+Results/*.log

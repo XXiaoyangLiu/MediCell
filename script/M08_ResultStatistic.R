@@ -14,7 +14,9 @@ if (!all(c("gene_id", "gene_name") %in% names(genes)) || anyNA(genes$gene_id) ||
     any(!nzchar(genes$gene_id)) || anyDuplicated(genes$gene_id)) stop("Invalid/duplicate gene_pos gene_id mapping")
 columns <- c("gene", "gene_name", "zscore", "effect_size", "pvalue", "var_g", "pred_perf_r2",
              "pred_perf_pval", "pred_perf_qval", "n_snps_used", "n_snps_in_cov", "n_snps_in_model")
-df_list <- lapply(celltypes, function(ct) {
+cores <- suppressWarnings(as.integer(Sys.getenv("MC_CORES", "4")))
+if (is.na(cores) || cores < 1L) cores <- 1L
+df_list <- parallel::mclapply(celltypes, function(ct) try({
   file <- file.path(TWAS_dir, paste0(ct, ".csv"))
   dat <- read.csv(file, stringsAsFactors=FALSE, check.names=FALSE)
   if (!nrow(dat) || anyDuplicated(names(dat)) || !setequal(columns, names(dat))) stop("Empty/unknown TWAS schema: ", file)
@@ -31,7 +33,11 @@ df_list <- lapply(celltypes, function(ct) {
   dat$gene_name <- genes$gene_name[mapping]
   names(dat)[names(dat)=="gene"] <- "gene_id"
   dat
-})
+}, silent = TRUE), mc.cores = min(cores, length(celltypes)))
+failed <- vapply(df_list, inherits, logical(1), "try-error")
+if (any(failed)) stop("M08 failed for ", paste(celltypes[failed], collapse = ", "), ": ",
+                      paste(unlist(df_list[failed]), collapse = "
+"))
 final_df <- do.call(rbind, df_list)
 bonf_sig_df <- subset(final_df, bonferroni_p < 0.05)
 fdr_sig_df <- subset(final_df, fdr_p < 0.05)

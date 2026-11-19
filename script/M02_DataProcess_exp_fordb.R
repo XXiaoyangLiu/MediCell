@@ -61,8 +61,9 @@ for (cell_type in cell_types) {
 }
 
 # INT-transform the filtered matrices and write one samples x genes TXT per cell type.
+cores <- mc_number("MC_CORES", "4", lower = 1, integer = TRUE)
 cell_types <- names(filtered_matrices)
-for (ctname in cell_types) {
+int_one <- function(ctname) {
   ct_matrix <- filtered_matrices[[ctname]]
   # transpose (samples x genes)
   tmp <- as.data.frame(t(ct_matrix))
@@ -75,10 +76,20 @@ for (ctname in cell_types) {
   colnames(tmp.INT) <- colnames(tmp)
   tmp.INT <- as.data.frame(tmp.INT)
 
+  out_file <- file.path(exp_dir, paste0(ctname, "_transformed_expression.txt"))
   write.table(
     tmp.INT,
-    file = file.path(exp_dir, paste0(ctname, "_transformed_expression.txt")),
-    sep = "\t",
+    file = out_file,
+    sep = "	",
     row.names = TRUE
   )
+  out_file
+}
+res_int <- mclapply(cell_types, function(ct) try(int_one(ct), silent = TRUE),
+                    mc.cores = min(cores, length(cell_types)))
+failed_int <- vapply(res_int, inherits, logical(1), "try-error")
+if (any(failed_int)) {
+  stop("M02exp failed for ", paste(cell_types[failed_int], collapse = ", "), ": ",
+       paste(unlist(res_int[failed_int]), collapse = "
+"))
 }

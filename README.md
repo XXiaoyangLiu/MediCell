@@ -6,129 +6,141 @@ cell-type-dependent genetic effects. It deconvolves bulk RNA-seq into
 cell-type-resolved expression via CIBERSORTx + ENIGMA, trains
 cell-type-specific genetically regulated expression (GReX) models with
 elastic-net, and performs S-PrediXcan association against GWAS summary
-statistics.
+statistics. For downstream therapeutic discovery, `medicell.py lincs` integrates
+cell-type TWAS associations and expression profiles with LINCS L1000
+perturbational signatures (`fgsea`) to prioritize candidate therapeutic
+perturbations per cell type.
 
-Analysis is configured by explicit cell types, PEER factors and model-selection
-parameters. No tissue name or tissue-specific presets are required.
+
+## Workflow
+
+![MediCell Analysis Workflow](docs/workflow.png)
+
 
 ## Installation
 
-Requirements: a Linux server with conda (a recent Miniconda/Miniforge; the
-installer auto-detects `~/miniforge3/bin/conda` or `$CONDA_EXE`, since system
-condas on some clusters are too old) and network access to conda-forge,
-bioconda and GitHub.
+Requirements: an `x86_64` Linux system with `conda`. The software is pre-packaged
+and ready to run directly after unpacking and creating the conda environments.
+
+1. Download and unpack the release archives from GitHub Releases:
 
 ```bash
-git clone git@github.com:delect-aj/MediCell.git
+tar xzf medicell-software.tar.gz
+tar xzf medicell-ref-data.tar.gz -C MediCell/data
 cd MediCell
-bash setup.sh
 ```
 
-`setup.sh` is idempotent (safe to re-run at any time) and installs:
+This creates `MediCell/` with the reference databases placed at `MediCell/data/ref/`
+(`data/ref/lincs/LINCS_PRL_top250_human.gmt`, `LINCS_PRL_top250.gmt`,
+`GSE92742_Broad_LINCS_pert_info.txt.gz`, and `GSE70138_Broad_LINCS_pert_info_2017-03-06.txt.gz`).
 
-| Component | Description |
-|---|---|
-| conda env `R4.4.3` | R 4.4.3 with ENIGMA, glmnet, RSQLite and other model-building packages |
-| conda env `r3.6.3` | legacy R 3.6.3 with PEER (PEER requires it) |
-| conda env `imlatools` | Python MetaXcan runtime + bcftools |
-| PEER | R package, built from source (github.com/PMBio/peer) |
-| ENIGMA | R package, installed from github.com/WWXkenmo/ENIGMA |
-| MetaXcan | cloned to `tools/MetaXcan` |
-| METAL | compiled to `tools/METAL/metal` |
-
-To install a lab-internal ENIGMA version instead of the public one:
+2. Create the three runtime conda environments:
 
 ```bash
-bash setup.sh --enigma-src /path/to/ENIGMA
+conda env create -f envs/R4.4.3.yml
+conda env create -f envs/r3.6.3.yml
+conda env create -f envs/imlatools.yml
 ```
+
+| Component | Location / Name | Description |
+|---|---|---|
+| conda env `R4.4.3` | `envs/R4.4.3.yml` | R 4.4.3 runtime for ENIGMA, elastic-net training, SQLite DBs, GWAS processing, and `fgsea` LINCS enrichment |
+| conda env `r3.6.3` | `envs/r3.6.3.yml` | Legacy R 3.6.3 runtime for PEER hidden-factor estimation |
+| conda env `imlatools` | `envs/imlatools.yml` | Python 3.10 runtime for MetaXcan / S-PrediXcan and `bcftools` |
+| Bundled binaries & libraries | `tools/` | Pre-built `METAL`, `MetaXcan`, `ENIGMA` (`tools/R_libs/R4.4.3`), and `PEER` (`tools/R_libs/r3.6.3`) loaded automatically by `medicell.py` |
+| Reference databases | `data/ref/` | Extracted from `medicell-ref-data.tar.gz` into `MediCell/data/` (`data/ref/lincs/...` for `medicell.py lincs`) |
 
 ## Usage
 
+### 1. Cell-type TWAS
+
+#### Required data
+
+- **Cohort & sequencing data (self-prepared):**
+  - **Bulk RNA-seq** expression matrix (`--bulk-tpm`, TPM) and **matched individual genotypes** (`--genotype-pattern`, dosage `[0, 2]` + SNP annotations `--snp-annot-pattern` / `--snp-annot-file`) from the same individuals, along with **sample covariates** (`--covariates`, e.g., PCs, sex, age, batch).
+  - **Tissue-matched scRNA-seq reference** (`--enigma-ref`, cell-type-aggregated TPM) and **cell-type fractions** (`--cibersortx-frax`, externally estimated via [CIBERSORTx](https://cibersortx.stanford.edu/)).
+  - **GWAS summary statistics** (`--gwas-manifest` or `--gwas-summary`) for the target trait/disease (e.g., from the [NHGRI-EBI GWAS Catalog](https://www.ebi.ac.uk/gwas/) or published studies).
+- **Public reference data (download & match genome build / GWAS ancestry):**
+  - **1000 Genomes Phase 3 VCFs & sample panel** (`--g1000-vcf-pattern`, `--g1000-samples` matched to GWAS ancestry): [1000 Genomes Phase 3 FTP/HTTPS release](https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/) (including per-chromosome VCFs and `integrated_call_samples_v3.20130502.ALL.panel`).
+  - **Gene annotations & ID mapping** (`--gene-annot`, `--gene-pos`): [GENCODE Human](https://www.gencodegenes.org/human/) ([GRCh37 Release 19](https://www.gencodegenes.org/human/release_19.html)) or Ensembl archive matching your assembly (`GRCh37` / `GRCh38`).
+
+#### Quick start
+
+Run the full cell-type TWAS pipeline end-to-end:
+
 ```bash
-python3 medicell.py --output-dir run_out --all \
+python3 medicell.py --output-dir run_out --cell-type-twas \
+    --cores 4 \
     --cell-types B,CD4T,CD8T,NK,Mono,DC \
     --peer-nk 2 --peer-keep 2 \
-    --training-population EUR --twas-model-set unfiltered \
-    --bulk-tpm           data/bulk_TPM.txt \
-    --enigma-ref         data/sc_reference_TPM.matrx \
-    --cibersortx-frax    data/CIBERSORTx_fractions.txt \
-    --covariates         data/covariates.txt \
-    --snp-annot-pattern  data/snp_annot.chr{chr}.txt \
-    --genotype-pattern   data/genotype.chr{chr}.txt \
-    --gene-annot         data/gene_annot.parsed.txt \
-    --snp-annot-file     data/snp_annotation.txt \
-    --gwas-manifest      data/gwas_manifest.tsv \
-    --g1000-vcf-pattern  data/1000G/ALL.chr{chr}.phase3...genotypes.vcf.gz \
-    --g1000-samples      data/EUR_EAS_samples.txt \
-    --gene-pos           data/gene_pos_grch37.82.csv
+    --training-population POP --gwas-population POP \
+    --bulk-tpm           path/to/bulk_TPM.txt \
+    --enigma-ref         path/to/sc_reference_TPM.matrx \
+    --cibersortx-frax    path/to/CIBERSORTx_fractions.txt \
+    --covariates         path/to/covariates.txt \
+    --snp-annot-pattern  path/to/snp_annot.chr{chr}.txt \
+    --genotype-pattern   path/to/genotype.chr{chr}.txt \
+    --gene-annot         path/to/gene_annot.parsed.txt \
+    --snp-annot-file     path/to/snp_annotation.txt \
+    --gwas-manifest      path/to/gwas_manifest.tsv \
+    --g1000-vcf-pattern  path/to/1000G/ALL.chr{chr}.phase3...genotypes.vcf.gz \
+    --g1000-samples      path/to/POP_samples.txt \
+    --gene-pos           path/to/gene_pos_grch37.82.csv
 ```
 
-Every input path pattern takes a `{chr}` placeholder that the driver expands
-per chromosome (1–22 by default). The covariates file is required for M02cov
-(format below).
+#### Run modes
 
-### Run modes
-
-Use `--all` for the complete pipeline. Omitting both `--all` and `--steps`
-also runs the complete pipeline, preserving existing commands.
+Use `--cell-type-twas` to run cell-type TWAS (or omit step selectors). To run a
+single step or a subset, use the descriptive step flags (`--inferExp`,
+`--summarizeTWAS`, etc.), positional subcommand (`medicell.py inferExp ...`),
+or `--steps`:
 
 ```bash
-# Run only the summary step, using existing TWAS results in run_out
-python3 medicell.py --output-dir run_out --cell-types B \
-    --steps M08 --gene-pos data/gene_pos_grch37.82.csv
+# Run only ENIGMA expression inference
+python3 medicell.py --inferExp --output-dir run_out --cell-types B,CD4T \
+    --bulk-tpm path/to/bulk_TPM.txt --enigma-ref path/to/sc_reference_TPM.matrx \
+    --cibersortx-frax path/to/CIBERSORTx_fractions.txt
 
-# Run several steps, using existing M01 results in run_out
-python3 medicell.py --output-dir run_out --cell-types B \
-    --peer-nk 2 --peer-keep 2 \
-    --steps M02exp M02cov --covariates data/covariates.txt
+# Run only the TWAS summary step, using existing TWAS results in run_out
+python3 medicell.py --summarizeTWAS --output-dir run_out --cell-types B \
+    --gene-pos path/to/gene_pos_grch37.82.csv
 
-# Comma-separated lists remain supported
-python3 medicell.py --output-dir run_out --cell-types B \
-    --peer-nk 2 --peer-keep 2 \
-    --steps M02exp,M02cov --covariates data/covariates.txt
+# Combine multiple step flags (or use --steps normExp,peerCov)
+python3 medicell.py --normExp --peerCov --output-dir run_out --cell-types B \
+    --peer-nk 2 --peer-keep 2 --covariates path/to/covariates.txt
 ```
 
-`--all` and `--steps` are mutually exclusive. Selected steps always execute
-in the pipeline order listed below, regardless of argument order; duplicates
-run only once. Unknown or empty step names are rejected before execution.
-Only selected steps run: prerequisites are **not** run automatically. Reuse
-the same output directory containing the required upstream results, with
-consistent alpha, cell types, PEER configuration and chromosomes.
+`--cell-type-twas`, `--steps`, and `--<step>` flags are mutually exclusive (combining
+multiple `--<step>` flags is supported). Selected steps always execute in
+pipeline order, regardless of argument order; duplicates run only once.
+Only selected steps run: prerequisites are **not** run automatically.
 
-Old step names still work as aliases: `M06` (database), `M04align`/`M04metal`/
-`M04filter` (GWAS), `M05ld`/`M05cov` (LD). The driver prints the resolved
-alias mapping. The bare name `M06` keeps its historical "build database"
-meaning and is never reinterpreted as an LD step.
+Canonical step names:
 
-Only inputs consumed by the selected steps are required:
-
-| Selected step | Required data arguments |
-|---|---|
-| `M01` | `--bulk-tpm`, `--enigma-ref`, `--cibersortx-frax` |
-| `M02cov` | `--covariates` |
-| `M03` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
-| `M05align` | `--snp-annot-file`, `--gwas-dir` + a GWAS mode (below) |
-| `M06ld` | `--snp-annot-pattern`; also `--g1000-vcf-pattern` and `--g1000-samples` unless `--ld-dosage-dir` is supplied |
-| `M08` | `--gene-pos` |
+| Step (`--<step>`) | Script | Required data arguments |
+|---|---|---|
+| `inferExp` | `M01_ENIGMA.R` | `--bulk-tpm`, `--enigma-ref`, `--cibersortx-frax` |
+| `normExp` | `M02_DataProcess_exp_fordb.R` | (uses `inferExp` output) |
+| `peerCov` | `M02_DataProcess_covariance_for_db.R` | `--covariates` |
+| `trainModel` | `M03_ModelTraining.R` | `--snp-annot-pattern`, `--genotype-pattern`, `--gene-annot` |
+| `buildDB` | `M04_Makedb.R` | (uses `trainModel` output) |
+| `alignGWAS` | `M05_DataProcess_GWAS_align4METAL.R` | `--snp-annot-file`, `--gwas-manifest`, `--gwas-id` |
+| `metaGWAS` *(optional)* | `M05_DataProcess_GWAS_metal.sh` | (multi-study meta; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
+| `filterGWAS` *(optional)* | `M05_DataProcess_GWAS_metal_filter.R` | (post-meta QC; skipped with `--skip-gwas-meta` or `--gwas-summary`) |
+| `extractLD` | `M06_LD.sh` | `--snp-annot-pattern`; also `--g1000-vcf-pattern`, `--g1000-samples` unless `--ld-dosage-dir` |
+| `buildLD` | `M06_Makeld.sh` | (uses `buildDB` + `extractLD` output) |
+| `runTWAS` | `M07_TWAS.sh` | (uses `buildDB` + `buildLD` + `filterGWAS` / `--gwas-summary`) |
+| `summarizeTWAS` | `M08_ResultStatistic.R` | `--gene-pos` |
 
 Other steps use upstream results and need no additional original data
 arguments. For multiple steps, provide the union of their required inputs.
 Existing tool and environment options still apply.
 
-### GWAS modes
+#### GWAS modes
 
-M05align / M05metal / M05filter require an **explicit** mode; changing
-`--gwas-id` alone never silently switches what data is analyzed:
+For raw/multi-cohort GWAS inputs, `alignGWAS` / `metaGWAS` / `filterGWAS` use an explicit manifest (`--gwas-manifest`):
 
-- `--gwas-profile sle-legacy-pbmc | sle-legacy-kidney` — bit-exact
-  reproduction of the historical SLE implementation. **This profile
-  reproduces known statistical errors of the old code** (the third study's
-  BETA/SE column mis-projection, the swapped effect-allele declaration in
-  METAL, whitespace-parsing column shifts). It exists so historical results
-  remain reproducible; use it only for that. Its output names are fixed
-  (`SLE_metal_096_917_183…`) and it forces `--gwas-filter-policy legacy`.
-- `--gwas-manifest FILE` — the corrected standard path. `FILE` is a TSV with
-  one row per GWAS study and the exact columns:
+- `--gwas-manifest FILE` — TSV with one row per GWAS study and the exact columns:
 
   ```
   study_id  path  build  effect_scale  chr_col  pos_col  ea_col  oa_col
@@ -138,23 +150,31 @@ M05align / M05metal / M05filter require an **explicit** mode; changing
   `path` must be absolute; `effect_scale` is `linear` or `log_odds`;
   `effect_mode` is `beta_se`, `or_se` (SE of the log-OR) or `or_p` (SE
   back-computed from OR and P); `n_mode` is `none`, `constant` (`n_value`)
-  or `column` (`n_col`). Unused optional columns are left empty. The driver
-  prints a warning when the legacy profile is active; standard runs get the
-  `<gwas_id>_meta` output prefix and filter policy `none` by default.
+  or `column` (`n_col`). Unused optional columns are left empty. Runs produce
+  the `{gwas_id}_meta` output prefix and filter policy `none` by default.
+
+`metaGWAS` and `filterGWAS` are **optional** and only needed for multi-study
+meta-analysis (e.g., combining multiple GWAS cohorts). A pre-QC'd single-study
+GWAS can run either:
+
+- directly with `--cell-type-twas --gwas-summary FILE --gwas-id TRAIT` (automatically skips
+  `alignGWAS`, `metaGWAS`, and `filterGWAS`; `FILE` must include columns
+  `MarkerName`, `Allele1`, `Allele2`, `Effect`, `StdErr`, `P-value`), or
+- with `--cell-type-twas --gwas-manifest SINGLE_STUDY.tsv --skip-gwas-meta --gwas-id TRAIT`
+  (runs `alignGWAS` to harmonize alleles against `--snp-annot-file` and skips
+  `metaGWAS` / `filterGWAS`).
 
 The active mode is recorded in `M04_gwas/gwas_run.json`, so re-running
-M05metal/M05filter/M07 in the same output directory recovers it. M07 can also
-run on any external summary with `--gwas-summary FILE` (cannot be combined
-with the GWAS steps). `--gwas-id` is a label used in standard-mode output
-names and reports only.
+`metaGWAS`/`filterGWAS`/`runTWAS` in the same output directory recovers it.
+`--gwas-id` is a trait label used in output names and reports.
 
-### Explicit analysis configuration
+#### Explicit analysis configuration
 
 - `--cell-types` is always required and must match the reference cell-type names.
-- `--peer-nk` and `--peer-keep` are required only for M02cov. Use `0`/`0`
+- `--peer-nk` and `--peer-keep` are required only for `peerCov`. Use `0`/`0`
   for known covariates only; no PEER factors are inferred in this mode.
-- `--twas-model-set unfiltered|filtered-signif` is required for M04db and M07.
-- `--training-population` is optional metadata for M04db (default `unspecified`).
+- `--twas-model-set filtered-signif|unfiltered` (default `filtered-signif`) selects the database for `runTWAS`. `buildDB` always retains `{ct}_models_unfiltered.db` for `buildLD` SNP lookup and generates `{ct}_models_filtered_signif.db` by filtering whole genes (`R^2 > 0.01` and CV `p < 0.05`, dropping unqualified genes entirely).
+- `--training-population` is optional metadata for `buildDB` (default `unspecified`).
 
 Sample IDs default to exact matching and gene annotations default to the
 standard schema. Old inputs requiring R-style sample names or a missing
@@ -163,21 +183,7 @@ or `--gene-annot-format legacy-name-is-id`, respectively. Use separate output
 directories for separate cohorts. `--ld-panel-id` names the LD panel independently
 of the training population.
 
-For comparison with the original analysis, these were the former parameter sets;
-they are no longer selected automatically:
-
-| Original analysis | Cell types | PEER estimated / kept | TWAS model set |
-|---|---|---|---|
-| PBMC | `B,CD4T,CD8T,NK,Mono,DC` | 2 / 2 | `unfiltered` |
-| Glomerulus | `Bcell,Endo,MC,MNP,NK,NKT,Podo,Th_cell,CD8T` | 60 / 15 | `filtered-signif` |
-| Tubule | `Bcell,CD8T,CDICA,CDICB,DCT,LOH,MNP,NK,NKT,PT,Th_cell,Plasmacytoid_DC` | 60 / 11 | `filtered-signif` |
-
-Matching these settings alone does not guarantee identical results: input files,
-GWAS mode, filtering, sample-ID policy and training seed must also match. M08 omits
-the `tissue` and `peer` label columns; association statistics and corrections are
-unchanged by removing these labels.
-
-### Parameters
+#### Parameters
 
 `--cell-types` and `--output-dir` are always required. Data inputs are required
 according to the selected steps above; tuning options retain their defaults:
@@ -187,19 +193,18 @@ according to the selected steps above; tuning options retain their defaults:
 | `--output-dir` | run directory; all results are written here |
 | `--bulk-tpm` | bulk TPM expression matrix (genes x samples) |
 | `--enigma-ref` | single-cell reference matrix (TPM, aggregated by cell type) |
-| `--cibersortx-frax` | CIBERSORTx adjusted cell-fraction output |
-| `--covariates` | covariates txt, first column = sample ID, then covariate columns (required for M02cov; format below) |
+| `--cibersortx-frax` | externally estimated CIBERSORTx cell-type fractions passed into `inferExp` (ENIGMA) instead of internal fraction estimation |
+| `--covariates` | covariates txt, first column = sample ID, then covariate columns (required for `peerCov`; format below) |
 | `--cat-covs` | comma-separated categorical covariate columns to dummy-encode (default none) |
 | `--min-level-count` | drop categorical levels with fewer samples (default 5) |
-| `--peer-nk` | PEER hidden factors per cell type; explicit value required for M02cov |
-| `--peer-keep` | PEER factors kept; explicit value required for M02cov; must be ≤ `--peer-nk` |
+| `--peer-nk` | PEER hidden factors per cell type; explicit value required for `peerCov` |
+| `--peer-keep` | PEER factors kept; explicit value required for `peerCov`; must be ≤ `--peer-nk` |
 | `--snp-annot-pattern` | per-chromosome SNP annotation, with `{chr}` placeholder |
 | `--genotype-pattern` | per-chromosome genotype dosage, with `{chr}` placeholder |
-| `--gene-annot` | gene annotation (parsed; protein-coding genes recommended) |
+| `--gene-annot` | gene annotation (TSS-collapsed `start == end`, or with `strand`/`tss` column to resolve TSS) |
 | `--snp-annot-file` | single-file genotype panel SNP annotation (for GWAS align) |
-| `--gwas-dir` | directory with the three SLE GWAS files: `GCST011096_buildGRCh37.tsv`, `GCST90018917_buildGRCh37.tsv.gz`, `GCST90476183_hg19.tsv.gz` (legacy profiles) |
 | `--g1000-vcf-pattern` | 1000 Genomes Phase 3 VCF pattern, with `{chr}` placeholder |
-| `--g1000-samples` | 1000G sample list for the LD panel (EUR+EAS by default; pass an EUR-only list for a European LD panel) |
+| `--g1000-samples` | 1000G sample list **matching the GWAS ancestry** (e.g., use 1000G EUR samples for a EUR GWAS, or matched EUR+EAS samples for trans-ancestry EUR+EAS meta-GWAS) |
 | `--gene-pos` | gene position annotation CSV (GRCh37, with gene_id/gene_name columns) |
 
 Input contracts:
@@ -211,10 +216,13 @@ Input contracts:
 | `--gene-annot-format` | `standard` (default) or explicitly selected `legacy-name-is-id` |
 | `--genome-build` | `GRCh37` (default) or `GRCh38`; declared for this cohort's coordinates, no liftover is performed |
 | `--training-population` | optional population label stored with the trained models (default `unspecified`) |
-| `--ld-panel-id` | LD panel id used in dosage/covariance file names (default `EUR_EAS`) |
-| `--twas-model-set` | `unfiltered` or `filtered-signif`; required for M04db/M07 |
+| `--gwas-population` | GWAS ancestry label (e.g. `EUR`, `EAS`, `EUR_EAS`); sets default `--ld-panel-id` when omitted |
+| `--ld-panel-id` | LD panel id matched to GWAS ancestry (defaults to `--gwas-population` if set, else `EUR_EAS`) |
+| `--twas-model-set` | `filtered-signif` (default; gene-level filter `R^2 > 0.01` & CV `p < 0.05`) or `unfiltered` for `runTWAS`; `buildDB` always retains `unfiltered` DB for `buildLD` |
+| `--maf` | MAF threshold for `trainModel` genotypes in `[0, 0.5]` (default `0.01`; manuscript used `0.05`) |
+| `--maf-policy` | `filter` (drop variants `< --maf`) or `verify` (fail if input genotype violates `--maf`) |
 
-#### Covariates file format
+##### Covariates file format
 
 Tab- or space-separated with a header. Two layouts are auto-detected:
 
@@ -248,20 +256,23 @@ Run control:
 | Parameter | Description |
 |---|---|
 | `--alpha` | ENIGMA alpha (default 0.1) |
-| `--tpm-min` | M02exp gene filter: min inferred TPM (default 0.1) |
-| `--min-pct` | M02exp gene filter: min sample fraction, 0–1 (default 0.01) |
-| `--min-samples` | M02exp gene filter: min sample count floor (default 5) |
-| `--all` | run all 12 steps; also the default when no mode is specified |
-| `--steps STEP [STEP ...]` | run a subset in pipeline order; space/comma-separated; mutually exclusive with `--all`; old names are aliases |
+| `--tpm-min` | `normExp` gene filter: min inferred TPM (default 0.1) |
+| `--min-pct` | `normExp` gene filter: min sample fraction, 0–1 (default 0.01) |
+| `--min-samples` | `normExp` gene filter: min sample count floor (default 5) |
+| `--cell-type-twas` | run the full cell-type TWAS pipeline (all 12 TWAS steps; default when no step selector is specified) |
+| `--steps STEP [STEP ...]` | run a subset in pipeline order (space/comma-separated) |
+| `--<step>` | single-step flags (e.g. `--inferExp`, `--summarizeTWAS`), combinable across steps |
 | `--chromosomes` | comma-separated chromosomes (default 1–22) |
 | `--cell-types` | explicit space/comma-separated cell-type list; required |
-| `--seed` | explicit M03 training seed; forces serial training (`--training-cores 1`) |
-| `--training-cores` | cores for M03 training (default 4) |
-| `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip the M06ld extraction |
-| `--gwas-id` | trait label for standard-mode output names and reports (default SLE) |
-| `--gwas-summary` | explicit filtered GWAS summary for M07 |
+| `--cores` | unified parallel cores/workers across all pipeline steps (default 4) |
+| `--seed` | explicit `trainModel` seed; forces serial inner training (`--training-cores 1`) |
+| `--training-cores` | inner `trainModel` cores per `(cell_type, chr)` job (defaults from `--cores`) |
+| `--ld-dosage-dir` | reuse pre-extracted 1000G dosages, skip `extractLD` extraction |
+| `--gwas-id` | trait label (required for `--gwas-manifest` and standalone `summarizeTWAS` without `gwas_run.json`; auto-recovered from `gwas_run.json` when present) |
+| `--gwas-summary` | pre-QC'd GWAS summary for `runTWAS`; automatically skips `alignGWAS`/`metaGWAS`/`filterGWAS` when used with `--cell-type-twas` |
+| `--skip-gwas-meta` | skip optional `metaGWAS`/`filterGWAS` for a single pre-QC'd study in `--gwas-manifest` |
 
-Environment/tools (defaults match `setup.sh`):
+Environment/tools (defaults match `envs/*.yml` and bundled `tools/`):
 
 | Parameter | Description |
 |---|---|
@@ -270,56 +281,55 @@ Environment/tools (defaults match `setup.sh`):
 | `--metal-bin` | METAL binary (default `tools/METAL/metal`) |
 | `--bcftools` / `--bcf-plugins` | bcftools executable / plugin dir |
 
-M03 always uses the bundled training core, `script/helpers/gtex_v7_nested_cv_elnet.R`.
+`trainModel` always uses the bundled training core, `script/helpers/gtex_v7_nested_cv_elnet.R`.
 
-### Pipeline steps
+#### Pipeline steps
 
-Executed in dependency order (canonical names; old aliases in parentheses):
+Executed in dependency order:
 
 | Step | What it does |
 |---|---|
-| `M01` | ENIGMA trace-norm deconvolution with CIBERSORTx fractions |
-| `M02exp` | filter low-expression genes (TPM > `--tpm-min` in `max(--min-pct x N, --min-samples)` samples), inverse-normal transform per cell type |
-| `M02cov` | PEER factors + covariates for model training |
-| `M03` | nested-CV elastic-net GReX models (per cell type x chromosome) |
-| `M04db` (`M06`) | SQLite weight databases for S-PrediXcan |
-| `M05align` (`M04align`) | align GWAS studies to the genotype panel (allele flips, effect direction) |
-| `M05metal` (`M04metal`) | METAL inverse-variance meta-analysis |
-| `M05filter` (`M04filter`) | post-meta filtering (policy-dependent) |
-| `M06ld` (`M05ld`) | 1000G dosages aligned to the panel annotation |
-| `M06cov` (`M05cov`) | LD covariance matrices per cell type |
-| `M07` | S-PrediXcan association per cell type |
-| `M08` | FDR / Bonferroni result summary |
+| `inferExp` | ENIGMA trace-norm deconvolution using externally estimated CIBERSORTx cell fractions |
+| `normExp` | filter low-expression genes (TPM > `--tpm-min` in `max(--min-pct x N, --min-samples)` samples), per-gene inverse-normal transform per cell type |
+| `peerCov` | PEER factors + covariates for model training (parallelized across cell types) |
+| `trainModel` | nested-CV elastic-net GReX models (parallelized across cell types x chromosomes and genes) |
+| `buildDB` | build `{ct}_models_unfiltered.db` (kept for `buildLD` SNP lookup) and gene-filtered `{ct}_models_filtered_signif.db` (`R^2 > 0.01`, CV `p < 0.05`; whole failed genes removed) |
+| `alignGWAS` | align GWAS study/studies to the genotype panel (and write direct TWAS input when meta is skipped) |
+| `metaGWAS` | *(optional)* METAL inverse-variance meta-analysis for multi-study GWAS |
+| `filterGWAS` | *(optional)* post-meta heterogeneity/direction filtering (policy-dependent) |
+| `extractLD` | 1000G dosages for GWAS-ancestry-matched samples aligned to the panel annotation (parallelized across chromosomes) |
+| `buildLD` | LD covariance matrices per cell type (parallelized across cell types) |
+| `runTWAS` | S-PrediXcan association per cell type (parallelized across cell types) |
+| `summarizeTWAS` | per-cell-type FDR / Bonferroni result summary |
 
-M03 dominates total runtime (roughly proportional to cell types x
-chromosomes). Use `--steps` and `--chromosomes` to run disjoint subsets in
-parallel sessions; results merge naturally into the same output directory.
+`trainModel` dominates total runtime (roughly proportional to cell types x
+chromosomes). `--cores` parallelizes both `(cell_type, chromosome)` jobs and
+inner gene training, and `--steps` / `--chromosomes` can also split disjoint
+subsets across separate sessions into the same output directory.
 
-M04db accepts only the current M03 24-column model summaries with explicit
-`gene_name` and `gene_id`. Old 23-column summaries are rejected; rerun M03
-rather than relying on automatic column repair. The significant-model thresholds
+`buildDB` accepts only the current 24-column `trainModel` summaries with
+explicit `gene_name` and `gene_id`. Old 23-column summaries are rejected; rerun
+`trainModel` rather than relying on automatic column repair. The significant-model thresholds
 remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 `{ct}_models.db` is created. Existing cached databases are not deleted.
 
-### Outputs
+#### Outputs
 
 ```
 {output-dir}/
   M01_deconvolution/    enigma.cse.trace_alpha_{alpha}.RData    deconvolved expression array
                         myenigma_alpha_{alpha}.RData           fitted ENIGMA object
   M02_expression/       {ct}_transformed_expression.txt         filtered + INT expression, samples x genes, sample IDs retained
-  M02_covariates/       {ct}_covariates.txt                     covariates used by M03
+  M02_covariates/       {ct}_covariates.txt                     covariates used by trainModel
                         {ct}_peer_res.RData                     raw PEER factors
   M03_models/summary/   Model_training_{ct}_chr{n}_model_summaries.txt
                         Model_training_{ct}_chr{n}_summary.txt
   M03_models/weights/   Model_training_{ct}_chr{n}_weights.txt
   M06_databases/        {ct}_models_unfiltered.db               all models; required for LD covariance and unfiltered TWAS
-                        {ct}_models_filtered_signif.db          only when --twas-model-set filtered-signif is selected
-  M04_gwas/             gwas_run.json                           recorded GWAS mode (profile or manifest)
-                        SLE_metal_096_917_1831.tbl              legacy METAL meta-analysis result
-                        SLE_metal_096_917_183_filt.tsv          legacy filtered meta statistics
-                        {gwas_id}_meta1.tbl                     standard-mode METAL result
-                        {gwas_id}_meta_filt.tsv                 standard-mode filtered statistics
+                        {ct}_models_filtered_signif.db          gene-filtered models (R^2 > 0.01, CV p < 0.05; default for runTWAS)
+  M04_gwas/             gwas_run.json                           recorded GWAS configuration
+                        {gwas_id}_meta1.tbl                     METAL meta-analysis result
+                        {gwas_id}_meta_filt.tsv                 filtered meta-analysis statistics
   M05_ld/dosage/        chr{n}_{panel}.txt.gz                   1000G panel dosages
   M05_ld/cov_{panel}/   chr{n}.txt.gz                           dosages aligned to the panel
                         {ct}.txt.gz                             LD covariance per cell type
@@ -332,19 +342,154 @@ remain `zscore_pval < 0.05` and `rho_avg_squared > 0.01`. No intermediate
 ```
 
 `{ct}` = cell type, `{n}` = chromosome, `{alpha}` = the `--alpha` value,
-`{panel}` = `--ld-panel-id`. Historical output directory names are unchanged
-so existing caches remain reusable. Called helper scripts live in
-`script/helpers/`; the M0-step entry scripts stay in `script/`.
+`{panel}` = `--ld-panel-id`. Called helper scripts live in `script/helpers/`;
+the step entry scripts stay in `script/`.
 
-## Reproducing historical results
+### 2. Therapeutic prioritization with LINCS
 
-The historical SLE numbers (TWAS, summaries) come from the legacy GWAS
-profile, which preserves the old implementation's known errors. Reproduce
-them with `--gwas-profile sle-legacy-pbmc` (or `sle-legacy-kidney`) and the
-original inputs; do not mix legacy intermediates with standard-mode ones.
-The corrected standard path (`--gwas-manifest`) can legitimately produce
-different statistics for the same studies — that is expected, and the
-difference is the fix.
+Downstream therapeutic prioritization is invoked separately via `medicell.py lincs` (or `medicell.py --lincs`).
+It connects cell-type-resolved TWAS results and cell-type expression profiles
+with LINCS L1000 perturbation signatures (`fgsea`) to score candidate compounds
+for each cell type:
+
+1. **`prepLincs` (`script/L01_lincs_prepare.R`)**: Splits TWAS summary
+   statistics by z-score sign (`pos`: `zscore > 0`, `neg`: `zscore < 0`) and
+   builds a gene-symbol x cell-type expression matrix (either from `--exp-matrix`
+   or by averaging `inferExp` ENIGMA `enigma.cse.test` across samples per cell type).
+2. **`enrichLincs` (`script/L02_lincs_enrichment.R`)**: Runs `fgsea` on
+   the ranked directional TWAS genes against `data/ref/lincs/LINCS_PRL_top250_human.gmt`
+   (or a custom `--lincs-gmt`), annotates hits with L1000 Phase 1/2 perturbation
+   metadata (`GSE92742` and `GSE70138` in `data/ref/lincs/`), and filters hits by
+   significance and NES sign (default `NES < 0`, `pval < 0.05`).
+3. **`scoreLincs` (`script/L03_lincs_drug_score.sh`)**: Selects the top
+   perturbations per run, extracts their leading-edge genes and per-cell-type
+   TWAS z-scores, computes cross-cell-type expression specificity (`expZscore`),
+   and sums `RankScore = |TWAS_zscore| * expZscore` over each drug's
+   leading-edge genes to produce a drug x cell-type prioritization matrix.
+
+Called helper scripts reside in `script/helpers/` (`lincs_fgsea_lib.R`,
+`lincsTissueSpecific.R`, `formatLeadingSpecific.pl`, `formatZscoreSpecific.pl`,
+`getZscoreSpecificMatrix.R`). The `R4.4.3` environment defined in `envs/R4.4.3.yml` includes `fgsea`,
+`dplyr`, `tidyr`, `data.table`, and `readxl` (for `.xlsx` inputs) required by
+LINCS therapeutic prioritization, selected automatically (`R4.4.3` / `r_4.6.1`) or
+via `--lincs-env <env>`. Large
+GMT files (`data/ref/lincs/*.gmt`, >100 MB) are excluded from Git tracking; stage
+them locally under `data/ref/lincs/` or pass `--lincs-gmt`.
+
+#### Quick start
+
+```bash
+# 1) Continue from an existing TWAS output directory (reuses inferExp ENIGMA + summarizeTWAS outputs)
+python3 medicell.py lincs \
+    --output-dir run_out \
+    --gene-pos path/to/gene_pos_grch37.82.csv \
+    --label cohort --direction both
+
+# 2) Run standalone from an external TWAS table (CSV/TSV/XLSX) + expression matrix
+python3 medicell.py lincs \
+    --output-dir lincs_out \
+    --twas-file path/to/twas.xlsx --twas-sheet eGFR_pbmc_neg \
+    --exp-matrix path/to/exp_matrix.csv \
+    --trait eGFR --label pbmc --direction neg
+
+# 3) Run with custom TWAS column names and a custom GMT (skipping Broad pert_info)
+python3 medicell.py lincs \
+    --output-dir lincs_out \
+    --twas-file custom_twas.csv \
+    --twas-gene-col Symbol --twas-celltype-col CellType \
+    --twas-zscore-col Zscore --twas-padj-col FDR \
+    --exp-matrix custom_exp.csv \
+    --lincs-gmt custom.gmt \
+    --lincs-pert-phase1 "" --lincs-pert-phase2 "" \
+    --trait MyTrait --label MyCohort --direction pos
+
+# 4) Score directly from a pre-computed LINCS enrichment CSV (skip enrichLincs)
+python3 medicell.py lincs \
+    --output-dir lincs_out \
+    --twas-file path/to/twas.csv --exp-matrix path/to/exp_matrix.csv \
+    --lincs-sig-csv path/to/LINCS_sig.csv \
+    --trait MyTrait --label MyCohort --direction pos
+```
+
+#### Key options (`python3 medicell.py lincs --help`)
+
+| Option | Default | Description |
+|---|---|---|
+| `--output-dir` | required | Output root (may reuse a TWAS `--output-dir` containing `M01_deconvolution` and `M08_summary`). |
+| `--cores` | `4` | Unified parallel worker/core budget across all steps (`--training-cores` / `--lincs-cores` still work as overrides). |
+| `--steps` / `--<step>` | `prepLincs,enrichLincs,scoreLincs` | Steps to run (defaults to `prepLincs,scoreLincs` with `--lincs-sig-csv`). |
+| `--trait` | auto / `trait` | Output trait tag; auto-reads `gwas_id` from `M04_gwas/gwas_run.json` if present. |
+| `--label` / `--tissue` | `cohort` | Cohort/compartment label used in output file names (no tissue presets). |
+| `--direction` | `pos` | TWAS z-score direction: `pos` (`>0`), `neg` (`<0`), or `both`. |
+| `--cell-types` | all | Optional comma/space-separated subset of cell types (`scoreLincs` requires `>= 2`). |
+| `--twas-file` | `M08_summary/...` | TWAS summary table (`.csv`, `.tsv`, `.txt`, or `.xlsx` with `--twas-sheet`). |
+| `--twas-gene-col`, `--twas-zscore-col`, `--twas-padj-col`, `--twas-celltype-col` | auto-detect | Explicit column names if your TWAS table uses non-standard headers. |
+| `--exp-matrix` | from `inferExp` | Pre-built gene-symbol x cell-type CSV (rows = genes, columns = cell types). |
+| `--lincs-gmt` | `data/ref/lincs/LINCS_PRL_top250_human.gmt` | Perturbation/gene-set GMT file (`--lincs-pert-phase1/2 ""` disables extra annotation). |
+| `--lincs-sig-col`, `--lincs-sig-cutoff`, `--lincs-nes-filter` | `pval`, `0.05`, `neg` | Significance filter (`pval` or `padj`) and NES direction (`neg`, `pos`, `all`). |
+| `--top-n`, `--lincs-rank-by`, `--exclude-pert-pattern` | `50`, `pval`, `^BRD-\|trt_sh\.css` | Top perturbations kept in `scoreLincs`; pass `--exclude-pert-pattern ""` to keep all. |
+
+#### LINCS outputs
+
+```text
+<output-dir>/
+  L01_inputs/       {trait}_{label}_{dir}.csv          directional TWAS subset for fgsea
+                    {trait}_{label}_twas_all.tsv       normalized Gene/CellType/Zscore table
+                    {label}_exp_matrix.csv             gene x cell-type expression matrix
+  L02_enrichment/   LINCS_all_{trait}_{label}_{dir}.csv  all fgsea-tested perturbations
+                    LINCS_sig_{trait}_{label}_{dir}.csv  filtered LINCS hits
+  L03_drug_scores/  {label}_{trait}_{dir}.SpeciGenes.txt
+                    {label}_{trait}_{dir}.LeadingGenesPool.txt
+                    {label}_{trait}_{dir}.LeadingGenesDrugPairs.txt
+                    {label}_{trait}_{dir}.twas_zscore.txt
+                    {label}_{trait}_{dir}.drug_celltype_score.RData
+                    {label}_{trait}_{dir}.drug_celltype_score.csv   final drug x cell-type score matrix
+```
+
+## Testing
+
+The repository includes an end-to-end smoke test suite under `test/` built on a
+compact, de-identified chromosome 10 dataset (`test/data/`: 50 samples, 150
+genes, 197 SNPs, 2 GRCh37 GWAS studies, and 30 1000 Genomes EUR+EAS samples).
+
+### Running the full test suite
+
+Ensure the three conda environments (`R4.4.3`, `r3.6.3`, `imlatools`) and
+bundled `tools/` are available, then run from the repository root:
+
+```bash
+bash test/run_full.sh
+```
+
+`test/run_full.sh` creates a temporary output directory (`test/results/full.XXXXXX`)
+and runs two stages sequentially:
+
+1. **Cell-type TWAS (`M01`–`M08`)**: runs `python3 -u medicell.py --cell-type-twas`
+   in single-core mode (`--cores 1 --training-cores 1`) on `CD4T,B` and
+   chromosome `10`, then validates all outputs with `test/check_results.py`
+   (`test/data/manifest.json` SHA-256 checksums, all 12 pipeline steps, SQLite
+   models, LD covariances, S-PrediXcan outputs, and `M08_summary/` tables).
+2. **LINCS prioritization (`L01`–`L03`)**: invokes `bash test/run_lincs.sh <twas_out_dir>`
+   and validates outputs with `test/check_lincs_results.py` (standalone
+   directional `prepLincs -> enrichLincs -> scoreLincs` score symmetry,
+   single-cell-type rejection, and—when `data/ref/lincs/` is unpacked—Broad
+   `LINCS_PRL_top250_human.gmt` annotation/scoring and the full `M01` + `M08`
+   to `L01`–`L03` handoff).
+
+### Running LINCS tests standalone
+
+To verify only the LINCS workflow without running the TWAS pipeline:
+
+```bash
+bash test/run_lincs.sh
+```
+
+Without `data/ref/lincs/` unpacked, standalone mode still exercises the
+self-contained synthetic GMT fixture and single-cell-type error guard; with
+`data/ref/lincs/` present, it additionally tests Broad GMT enrichment and
+Phase 1/2 perturbation annotation. Passing an existing TWAS output directory as
+an argument (`bash test/run_lincs.sh <twas_out_dir>`) also runs the end-to-end
+handoff check.
 
 ## References
 
@@ -353,3 +498,5 @@ difference is the fix.
 - METAL: https://github.com/statgen/Metal
 - PEER: https://github.com/PMBio/peer
 - 1000 Genomes Project Phase 3
+- LINCS L1000 (GSE92742, GSE70138): https://www.lincsproject.org/
+- fgsea: https://bioconductor.org/packages/fgsea/
